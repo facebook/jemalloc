@@ -14,7 +14,7 @@
  * val[1,2,3]: Values of the given type.  The CAS tests use val2 for expected,
  * and val3 for desired.
  */
-
+/* clang-format off */
 #define DO_TESTS(t, ta, val1, val2, val3) do {				\
 	t val;								\
 	t expected;							\
@@ -174,6 +174,7 @@ typedef struct {							\
 		DO_INTEGER_TESTS(t, ta, test.val1, test.val2);		\
 	}								\
 } while (0)
+/* clang-format on */
 
 TEST_STRUCT(uint64_t, u64);
 TEST_BEGIN(test_atomic_u64) {
