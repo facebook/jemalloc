@@ -39,7 +39,7 @@ TEST_END
 
 TEST_BEGIN(test_peak_demand_update_skip_epochs) {
 	peak_demand_t peak_demand;
-	uint64_t interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
+	uint64_t      interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
 	peak_demand_init(&peak_demand, interval_ms);
 
 	nstime_t now;
@@ -65,7 +65,7 @@ TEST_END
 
 TEST_BEGIN(test_peak_demand_update_rewrite_optimization) {
 	peak_demand_t peak_demand;
-	uint64_t interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
+	uint64_t      interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
 	peak_demand_init(&peak_demand, interval_ms);
 
 	nstime_t now;
@@ -87,7 +87,7 @@ TEST_END
 
 TEST_BEGIN(test_peak_demand_update_out_of_interval) {
 	peak_demand_t peak_demand;
-	uint64_t interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
+	uint64_t      interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
 	peak_demand_init(&peak_demand, interval_ms);
 
 	nstime_t now;
@@ -111,7 +111,7 @@ TEST_END
 
 TEST_BEGIN(test_peak_demand_update_static_epoch) {
 	peak_demand_t peak_demand;
-	uint64_t interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
+	uint64_t      interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
 	peak_demand_init(&peak_demand, interval_ms);
 
 	nstime_t now;
@@ -133,7 +133,7 @@ TEST_END
 
 TEST_BEGIN(test_peak_demand_update_epoch_advance) {
 	peak_demand_t peak_demand;
-	uint64_t interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
+	uint64_t      interval_ms = 1000 * PEAK_DEMAND_NBUCKETS;
 	peak_demand_init(&peak_demand, interval_ms);
 
 	nstime_t now;
@@ -151,10 +151,8 @@ TEST_END
 
 int
 main(void) {
-	return test_no_reentrancy(
-	    test_peak_demand_init,
-	    test_peak_demand_update_basic,
-	    test_peak_demand_update_skip_epochs,
+	return test_no_reentrancy(test_peak_demand_init,
+	    test_peak_demand_update_basic, test_peak_demand_update_skip_epochs,
 	    test_peak_demand_update_rewrite_optimization,
 	    test_peak_demand_update_out_of_interval,
 	    test_peak_demand_update_static_epoch,

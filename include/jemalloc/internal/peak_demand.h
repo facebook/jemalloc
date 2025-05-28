@@ -46,8 +46,8 @@ struct peak_demand_s {
 void peak_demand_init(peak_demand_t *peak_demand, uint64_t interval_ms);
 
 /* Updates peak demand statistics with current number of active pages. */
-void peak_demand_update(peak_demand_t *peak_demand, const nstime_t *now,
-    size_t nactive);
+void peak_demand_update(
+    peak_demand_t *peak_demand, const nstime_t *now, size_t nactive);
 
 /* Returns maximum number of active pages in sliding window. */
 size_t peak_demand_nactive_max(peak_demand_t *peak_demand);

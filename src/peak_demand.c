@@ -27,10 +27,10 @@ peak_demand_next_epoch_advance(peak_demand_t *peak_demand) {
 }
 
 static uint64_t
-peak_demand_maybe_advance_epoch(peak_demand_t *peak_demand,
-    const nstime_t *now) {
-	nstime_t next_epoch_advance =
-	    peak_demand_next_epoch_advance(peak_demand);
+peak_demand_maybe_advance_epoch(
+    peak_demand_t *peak_demand, const nstime_t *now) {
+	nstime_t next_epoch_advance = peak_demand_next_epoch_advance(
+	    peak_demand);
 	if (nstime_compare(now, &next_epoch_advance) < 0) {
 		return peak_demand_epoch_ind(peak_demand);
 	}
@@ -53,10 +53,10 @@ peak_demand_maybe_advance_epoch(peak_demand_t *peak_demand,
 }
 
 void
-peak_demand_update(peak_demand_t *peak_demand, const nstime_t *now,
-    size_t nactive) {
+peak_demand_update(
+    peak_demand_t *peak_demand, const nstime_t *now, size_t nactive) {
 	uint64_t ind = peak_demand_maybe_advance_epoch(peak_demand, now);
-	size_t *epoch_nactive = &peak_demand->nactive_max[ind];
+	size_t  *epoch_nactive = &peak_demand->nactive_max[ind];
 	if (nactive > *epoch_nactive) {
 		*epoch_nactive = nactive;
 	}

@@ -19,7 +19,7 @@ void
 peak_event_update(tsd_t *tsd) {
 	uint64_t alloc = tsd_thread_allocated_get(tsd);
 	uint64_t dalloc = tsd_thread_deallocated_get(tsd);
-	peak_t *peak = tsd_peakp_get(tsd);
+	peak_t  *peak = tsd_peakp_get(tsd);
 	peak_update(peak, alloc, dalloc);
 }
 
@@ -39,7 +39,7 @@ void
 peak_event_zero(tsd_t *tsd) {
 	uint64_t alloc = tsd_thread_allocated_get(tsd);
 	uint64_t dalloc = tsd_thread_deallocated_get(tsd);
-	peak_t *peak = tsd_peakp_get(tsd);
+	peak_t  *peak = tsd_peakp_get(tsd);
 	peak_set_zero(peak, alloc, dalloc);
 }
 

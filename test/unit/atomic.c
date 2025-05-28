@@ -186,7 +186,6 @@ TEST_BEGIN(test_atomic_u64) {
 }
 TEST_END
 
-
 TEST_STRUCT(uint32_t, u32);
 TEST_BEGIN(test_atomic_u32) {
 	INTEGER_TEST_BODY(uint32_t, u32);
@@ -211,7 +210,6 @@ TEST_BEGIN(test_atomic_zd) {
 }
 TEST_END
 
-
 TEST_STRUCT(unsigned, u);
 TEST_BEGIN(test_atomic_u) {
 	INTEGER_TEST_BODY(unsigned, u);
@@ -220,11 +218,6 @@ TEST_END
 
 int
 main(void) {
-	return test(
-	    test_atomic_u64,
-	    test_atomic_u32,
-	    test_atomic_p,
-	    test_atomic_zu,
-	    test_atomic_zd,
-	    test_atomic_u);
+	return test(test_atomic_u64, test_atomic_u32, test_atomic_p,
+	    test_atomic_zu, test_atomic_zd, test_atomic_u);
 }

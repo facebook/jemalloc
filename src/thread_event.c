@@ -18,17 +18,17 @@
  * is triggered.  The parameter is the elapsed time since the last time an
  * event of the same type was triggered.
  */
-#define E(event, condition_unused, is_alloc_event_unused)		\
-uint64_t event##_new_event_wait(tsd_t *tsd);				\
-uint64_t event##_postponed_event_wait(tsd_t *tsd);			\
-void event##_event_handler(tsd_t *tsd, uint64_t elapsed);
+#define E(event, condition_unused, is_alloc_event_unused)                      \
+	uint64_t event##_new_event_wait(tsd_t *tsd);                           \
+	uint64_t event##_postponed_event_wait(tsd_t *tsd);                     \
+	void     event##_event_handler(tsd_t *tsd, uint64_t elapsed);
 
 ITERATE_OVER_ALL_EVENTS
 #undef E
 
 /* Signatures for internal functions fetching elapsed time. */
-#define E(event, condition_unused, is_alloc_event_unused)		\
-static uint64_t event##_fetch_elapsed(tsd_t *tsd);
+#define E(event, condition_unused, is_alloc_event_unused)                      \
+	static uint64_t event##_fetch_elapsed(tsd_t *tsd);
 
 ITERATE_OVER_ALL_EVENTS
 #undef E
@@ -79,9 +79,9 @@ prof_threshold_fetch_elapsed(tsd_t *tsd) {
 static bool
 te_ctx_has_active_events(te_ctx_t *ctx) {
 	assert(config_debug);
-#define E(event, condition, alloc_event)			       \
-	if (condition && alloc_event == ctx->is_alloc) {	       \
-		return true;					       \
+#define E(event, condition, alloc_event)                                       \
+	if (condition && alloc_event == ctx->is_alloc) {                       \
+		return true;                                                   \
 	}
 	ITERATE_OVER_ALL_EVENTS
 #undef E
@@ -91,14 +91,13 @@ te_ctx_has_active_events(te_ctx_t *ctx) {
 static uint64_t
 te_next_event_compute(tsd_t *tsd, bool is_alloc) {
 	uint64_t wait = TE_MAX_START_WAIT;
-#define E(event, condition, alloc_event)				\
-	if (is_alloc == alloc_event && condition) {			\
-		uint64_t event_wait =					\
-		    event##_event_wait_get(tsd);			\
-		assert(event_wait <= TE_MAX_START_WAIT);		\
-		if (event_wait > 0U && event_wait < wait) {		\
-			wait = event_wait;				\
-		}							\
+#define E(event, condition, alloc_event)                                       \
+	if (is_alloc == alloc_event && condition) {                            \
+		uint64_t event_wait = event##_event_wait_get(tsd);             \
+		assert(event_wait <= TE_MAX_START_WAIT);                       \
+		if (event_wait > 0U && event_wait < wait) {                    \
+			wait = event_wait;                                     \
+		}                                                              \
 	}
 
 	ITERATE_OVER_ALL_EVENTS
@@ -133,9 +132,9 @@ te_assert_invariants_impl(tsd_t *tsd, te_ctx_t *ctx) {
 	 * below is stronger than needed, but having an exactly accurate guard
 	 * is more complicated to implement.
 	 */
-	assert((!te_ctx_has_active_events(ctx) && last_event == 0U) ||
-	    interval == min_wait ||
-	    (interval < min_wait && interval == TE_MAX_INTERVAL));
+	assert((!te_ctx_has_active_events(ctx) && last_event == 0U)
+	    || interval == min_wait
+	    || (interval < min_wait && interval == TE_MAX_INTERVAL));
 }
 
 void
@@ -198,8 +197,9 @@ te_assert_invariants_debug(tsd_t *tsd) {
 static void
 te_ctx_next_event_fast_update(te_ctx_t *ctx) {
 	uint64_t next_event = te_ctx_next_event_get(ctx);
-	uint64_t next_event_fast = (next_event <= TE_NEXT_EVENT_FAST_MAX) ?
-	    next_event : 0U;
+	uint64_t next_event_fast = (next_event <= TE_NEXT_EVENT_FAST_MAX)
+	    ? next_event
+	    : 0U;
 	te_ctx_next_event_fast_set(ctx, next_event_fast);
 }
 
@@ -224,8 +224,7 @@ te_recompute_fast_threshold(tsd_t *tsd) {
 }
 
 static void
-te_adjust_thresholds_helper(tsd_t *tsd, te_ctx_t *ctx,
-    uint64_t wait) {
+te_adjust_thresholds_helper(tsd_t *tsd, te_ctx_t *ctx, uint64_t wait) {
 	/*
 	 * The next threshold based on future events can only be adjusted after
 	 * progressing the last_event counter (which is set to current).
@@ -233,20 +232,20 @@ te_adjust_thresholds_helper(tsd_t *tsd, te_ctx_t *ctx,
 	assert(te_ctx_current_bytes_get(ctx) == te_ctx_last_event_get(ctx));
 	assert(wait <= TE_MAX_START_WAIT);
 
-	uint64_t next_event = te_ctx_last_event_get(ctx) + (wait <=
-	    TE_MAX_INTERVAL ? wait : TE_MAX_INTERVAL);
+	uint64_t next_event = te_ctx_last_event_get(ctx)
+	    + (wait <= TE_MAX_INTERVAL ? wait : TE_MAX_INTERVAL);
 	te_ctx_next_event_set(tsd, ctx, next_event);
 }
 
 static uint64_t
 te_clip_event_wait(uint64_t event_wait) {
 	assert(event_wait > 0U);
-	if (TE_MIN_START_WAIT > 1U &&
-	    unlikely(event_wait < TE_MIN_START_WAIT)) {
+	if (TE_MIN_START_WAIT > 1U
+	    && unlikely(event_wait < TE_MIN_START_WAIT)) {
 		event_wait = TE_MIN_START_WAIT;
 	}
-	if (TE_MAX_START_WAIT < UINT64_MAX &&
-	    unlikely(event_wait > TE_MAX_START_WAIT)) {
+	if (TE_MAX_START_WAIT < UINT64_MAX
+	    && unlikely(event_wait > TE_MAX_START_WAIT)) {
 		event_wait = TE_MAX_START_WAIT;
 	}
 	return event_wait;
@@ -261,29 +260,29 @@ te_event_trigger(tsd_t *tsd, te_ctx_t *ctx) {
 
 	te_ctx_last_event_set(ctx, bytes_after);
 
-	bool allow_event_trigger = tsd_nominal(tsd) &&
-	    tsd_reentrancy_level_get(tsd) == 0;
-	bool is_alloc = ctx->is_alloc;
+	bool allow_event_trigger = tsd_nominal(tsd)
+	    && tsd_reentrancy_level_get(tsd) == 0;
+	bool     is_alloc = ctx->is_alloc;
 	uint64_t wait = TE_MAX_START_WAIT;
 
-#define E(event, condition, alloc_event)				\
-	bool is_##event##_triggered = false;				\
-	if (is_alloc == alloc_event && condition) {			\
-		uint64_t event_wait = event##_event_wait_get(tsd);	\
-		assert(event_wait <= TE_MAX_START_WAIT);		\
-		if (event_wait > accumbytes) {				\
-			event_wait -= accumbytes;			\
-		} else if (!allow_event_trigger) {			\
-			event_wait = event##_postponed_event_wait(tsd);	\
-		} else {						\
-			is_##event##_triggered = true;			\
-			event_wait = event##_new_event_wait(tsd);	\
-		}							\
-		event_wait = te_clip_event_wait(event_wait);		\
-		event##_event_wait_set(tsd, event_wait);		\
-		if (event_wait < wait) {				\
-			wait = event_wait;				\
-		}							\
+#define E(event, condition, alloc_event)                                       \
+	bool is_##event##_triggered = false;                                   \
+	if (is_alloc == alloc_event && condition) {                            \
+		uint64_t event_wait = event##_event_wait_get(tsd);             \
+		assert(event_wait <= TE_MAX_START_WAIT);                       \
+		if (event_wait > accumbytes) {                                 \
+			event_wait -= accumbytes;                              \
+		} else if (!allow_event_trigger) {                             \
+			event_wait = event##_postponed_event_wait(tsd);        \
+		} else {                                                       \
+			is_##event##_triggered = true;                         \
+			event_wait = event##_new_event_wait(tsd);              \
+		}                                                              \
+		event_wait = te_clip_event_wait(event_wait);                   \
+		event##_event_wait_set(tsd, event_wait);                       \
+		if (event_wait < wait) {                                       \
+			wait = event_wait;                                     \
+		}                                                              \
 	}
 
 	ITERATE_OVER_ALL_EVENTS
@@ -293,12 +292,11 @@ te_event_trigger(tsd_t *tsd, te_ctx_t *ctx) {
 	te_adjust_thresholds_helper(tsd, ctx, wait);
 	te_assert_invariants(tsd);
 
-#define E(event, condition, alloc_event)				\
-	if (is_alloc == alloc_event && condition &&			\
-	    is_##event##_triggered) {					\
-		assert(allow_event_trigger);				\
-		uint64_t elapsed = event##_fetch_elapsed(tsd);		\
-		event##_event_handler(tsd, elapsed);			\
+#define E(event, condition, alloc_event)                                       \
+	if (is_alloc == alloc_event && condition && is_##event##_triggered) {  \
+		assert(allow_event_trigger);                                   \
+		uint64_t elapsed = event##_fetch_elapsed(tsd);                 \
+		event##_event_handler(tsd, elapsed);                           \
 	}
 
 	ITERATE_OVER_ALL_EVENTS
@@ -323,14 +321,14 @@ te_init(tsd_t *tsd, bool is_alloc) {
 	te_ctx_last_event_set(&ctx, te_ctx_current_bytes_get(&ctx));
 
 	uint64_t wait = TE_MAX_START_WAIT;
-#define E(event, condition, alloc_event)				\
-	if (is_alloc == alloc_event && condition) {			\
-		uint64_t event_wait = event##_new_event_wait(tsd);	\
-		event_wait = te_clip_event_wait(event_wait);		\
-		event##_event_wait_set(tsd, event_wait);		\
-		if (event_wait < wait) {				\
-			wait = event_wait;				\
-		}							\
+#define E(event, condition, alloc_event)                                       \
+	if (is_alloc == alloc_event && condition) {                            \
+		uint64_t event_wait = event##_new_event_wait(tsd);             \
+		event_wait = te_clip_event_wait(event_wait);                   \
+		event##_event_wait_set(tsd, event_wait);                       \
+		if (event_wait < wait) {                                       \
+			wait = event_wait;                                     \
+		}                                                              \
 	}
 
 	ITERATE_OVER_ALL_EVENTS

@@ -22,8 +22,8 @@ prof_threshold_hook_set(prof_threshold_hook_t hook) {
 
 prof_threshold_hook_t
 prof_threshold_hook_get(void) {
-	return (prof_threshold_hook_t)atomic_load_p(&prof_threshold_hook,
-	    ATOMIC_ACQUIRE);
+	return (prof_threshold_hook_t)atomic_load_p(
+	    &prof_threshold_hook, ATOMIC_ACQUIRE);
 }
 
 /* Invoke callback for threshold reached */
@@ -32,10 +32,10 @@ prof_threshold_update(tsd_t *tsd) {
 	prof_threshold_hook_t prof_threshold_hook = prof_threshold_hook_get();
 	if (prof_threshold_hook == NULL) {
 		return;
-        }
+	}
 	uint64_t alloc = tsd_thread_allocated_get(tsd);
 	uint64_t dalloc = tsd_thread_deallocated_get(tsd);
-	peak_t *peak = tsd_peakp_get(tsd);
+	peak_t  *peak = tsd_peakp_get(tsd);
 	pre_reentrancy(tsd, NULL);
 	prof_threshold_hook(alloc, dalloc, peak->cur_max);
 	post_reentrancy(tsd);
