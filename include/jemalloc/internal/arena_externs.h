@@ -46,8 +46,12 @@ void arena_stats_merge(tsdn_t *tsdn, arena_t *arena, unsigned *nthreads,
     const char **dss, ssize_t *dirty_decay_ms, ssize_t *muzzy_decay_ms,
     size_t *nactive, size_t *ndirty, size_t *nmuzzy, arena_stats_t *astats,
     bin_stats_data_t *bstats, arena_stats_large_t *lstats, pac_estats_t *estats,
-    hpa_shard_stats_t *hpastats);
-void arena_handle_deferred_work(tsdn_t *tsdn, arena_t *arena);
+    hpa_shard_stats_t *hpastats, sec_stats_t *secstats);
+void arena_stats_global_central_read(tsdn_t *tsdn, hpa_central_stats_t *stats);
+void arena_stats_global_central_mutex_read(
+    tsdn_t *tsdn, mutex_prof_data_t *mutex_prof_data);
+
+void     arena_handle_deferred_work(tsdn_t *tsdn, arena_t *arena);
 edata_t *arena_extent_alloc_large(
     tsdn_t *tsdn, arena_t *arena, size_t usize, size_t alignment, bool zero);
 void arena_extent_dalloc_large_prep(
@@ -125,7 +129,10 @@ void   arena_prefork5(tsdn_t *tsdn, arena_t *arena);
 void   arena_prefork6(tsdn_t *tsdn, arena_t *arena);
 void   arena_prefork7(tsdn_t *tsdn, arena_t *arena);
 void   arena_prefork8(tsdn_t *tsdn, arena_t *arena);
+void   arena_global_prefork(tsdn_t *tsdn, bool use_hpa);
 void   arena_postfork_parent(tsdn_t *tsdn, arena_t *arena);
+void   arena_global_postfork_parent(tsdn_t *tsdn, bool use_hpa);
 void   arena_postfork_child(tsdn_t *tsdn, arena_t *arena);
+void   arena_global_postfork_child(tsdn_t *tsdn, bool use_hpa);
 
 #endif /* JEMALLOC_INTERNAL_ARENA_EXTERNS_H */

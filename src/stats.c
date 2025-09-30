@@ -843,6 +843,9 @@ stats_arena_hpa_shard_counters_print(
 	uint64_t nhugifies;
 	uint64_t nhugify_failures;
 	uint64_t ndehugifies;
+	uint64_t ndonated_ps;
+	uint64_t nborrowed_ps;
+	;
 
 	CTL_M2_GET(
 	    "stats.arenas.0.hpa_shard.npageslabs", i, &npageslabs, size_t);
@@ -874,6 +877,10 @@ stats_arena_hpa_shard_counters_print(
 	    &nhugify_failures, uint64_t);
 	CTL_M2_GET(
 	    "stats.arenas.0.hpa_shard.ndehugifies", i, &ndehugifies, uint64_t);
+	CTL_M2_GET(
+	    "stats.arenas.0.hpa_shard.ndonated_ps", i, &ndonated_ps, uint64_t);
+	CTL_M2_GET("stats.arenas.0.hpa_shard.nborrowed_ps", i, &nborrowed_ps,
+	    uint64_t);
 
 	emitter_table_printf(emitter,
 	    "HPA shard stats:\n"
@@ -891,6 +898,10 @@ stats_arena_hpa_shard_counters_print(
 	    " / sec)\n"
 	    "  Dehugifies: %" FMTu64 " (%" FMTu64
 	    " / sec)\n"
+	    "  Donated ps to pool: %" FMTu64 " (%" FMTu64
+	    " / sec)\n"
+	    "  Borrowed ps from the pool: %" FMTu64 " (%" FMTu64
+	    " / sec)\n"
 	    "\n",
 	    npageslabs, npageslabs_huge, npageslabs_nonhuge, nactive,
 	    nactive_huge, nactive_nonhuge, ndirty, ndirty_huge, ndirty_nonhuge,
@@ -899,7 +910,9 @@ stats_arena_hpa_shard_counters_print(
 	    rate_per_second(npurges, uptime), nhugifies,
 	    rate_per_second(nhugifies, uptime), nhugify_failures,
 	    rate_per_second(nhugify_failures, uptime), ndehugifies,
-	    rate_per_second(ndehugifies, uptime));
+	    rate_per_second(ndehugifies, uptime), ndonated_ps,
+	    rate_per_second(ndonated_ps, uptime), nborrowed_ps,
+	    rate_per_second(nborrowed_ps, uptime));
 
 	emitter_json_kv(emitter, "npageslabs", emitter_type_size, &npageslabs);
 	emitter_json_kv(emitter, "nactive", emitter_type_size, &nactive);
@@ -913,6 +926,10 @@ stats_arena_hpa_shard_counters_print(
 	    &nhugify_failures);
 	emitter_json_kv(
 	    emitter, "ndehugifies", emitter_type_uint64, &ndehugifies);
+	emitter_json_kv(
+	    emitter, "ndonated_ps", emitter_type_uint64, &ndonated_ps);
+	emitter_json_kv(
+	    emitter, "nborrowed_ps", emitter_type_uint64, &nborrowed_ps);
 
 	emitter_json_object_kv_begin(emitter, "slabs");
 	emitter_json_kv(emitter, "npageslabs_nonhuge", emitter_type_size,
@@ -1141,7 +1158,11 @@ stats_arena_mutexes_print(
 	CTL_LEAF_PREPARE(stats_arenas_mib, 3, "mutexes");
 
 	for (mutex_prof_arena_ind_t i = 0; i < mutex_prof_num_arena_mutexes;
-	    i++) {
+	     i++) {
+		/* hpa_central_pool is global, only print for arena 0 */
+		if (i == arena_prof_mutex_hpa_central_pool && arena_ind != 0) {
+			continue;
+		}
 		const char *name = arena_mutex_names[i];
 		emitter_json_object_kv_begin(emitter, name);
 		mutex_stats_read_arena(
@@ -1665,6 +1686,8 @@ stats_general_print(emitter_t *emitter) {
 	OPT_WRITE_SIZE_T("hpa_purge_threshold")
 	OPT_WRITE_UINT64("hpa_min_purge_delay_ms")
 	OPT_WRITE_CHAR_P("hpa_hugify_style")
+	OPT_WRITE_BOOL("hpa_use_pool")
+	OPT_WRITE_UINT64("hpa_pool_purge_delay_ms")
 	OPT_WRITE_SIZE_T("hpa_sec_nshards")
 	OPT_WRITE_SIZE_T("hpa_sec_max_alloc")
 	OPT_WRITE_SIZE_T("hpa_sec_max_bytes")
@@ -1870,7 +1893,9 @@ stats_print_helper(emitter_t *emitter, bool merged, bool destroyed,
 	    metadata_thp, resident, mapped, retained;
 	size_t   num_background_threads;
 	size_t   zero_reallocs;
+	size_t   ndirty_pool;
 	uint64_t background_thread_num_runs, background_thread_run_interval;
+	uint64_t npurged_pool;
 
 	CTL_GET("stats.allocated", &allocated, size_t);
 	CTL_GET("stats.active", &active, size_t);
@@ -1883,6 +1908,8 @@ stats_print_helper(emitter_t *emitter, bool merged, bool destroyed,
 	CTL_GET("stats.retained", &retained, size_t);
 
 	CTL_GET("stats.zero_reallocs", &zero_reallocs, size_t);
+	CTL_GET("stats.central_pool.ndirty", &ndirty_pool, size_t);
+	CTL_GET("stats.central_pool.npurged", &npurged_pool, uint64_t);
 
 	if (have_background_thread) {
 		CTL_GET("stats.background_thread.num_threads",
@@ -1924,6 +1951,11 @@ stats_print_helper(emitter_t *emitter, bool merged, bool destroyed,
 	/* Strange behaviors */
 	emitter_table_printf(emitter,
 	    "Count of realloc(non-null-ptr, 0) calls: %zu\n", zero_reallocs);
+
+	/* Central pool */
+	emitter_table_printf(emitter,
+	    "Central pool dirty: %zu, purged: %" FMTu64 "\n", ndirty_pool,
+	    npurged_pool);
 
 	/* Background thread stats. */
 	emitter_json_object_kv_begin(emitter, "background_thread");

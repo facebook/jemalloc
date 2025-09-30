@@ -43,7 +43,9 @@ static hpa_shard_opts_t test_hpa_shard_opts_default = {
     /* min_purge_delay_ms */
     0,
     /* hugify_style */
-    hpa_hugify_style_lazy};
+    hpa_hugify_style_lazy,
+    /* use_pool */
+    false};
 
 static hpa_shard_opts_t test_hpa_shard_opts_purge = {
     /* slab_max_alloc */
@@ -67,7 +69,9 @@ static hpa_shard_opts_t test_hpa_shard_opts_purge = {
     /* min_purge_delay_ms */
     0,
     /* hugify_style */
-    hpa_hugify_style_lazy};
+    hpa_hugify_style_lazy,
+    /* use_pool */
+    false};
 
 static hpa_shard_opts_t test_hpa_shard_opts_aggressive = {
     /* slab_max_alloc */
@@ -91,7 +95,9 @@ static hpa_shard_opts_t test_hpa_shard_opts_aggressive = {
     /* min_purge_delay_ms */
     10,
     /* hugify_style */
-    hpa_hugify_style_eager};
+    hpa_hugify_style_eager,
+    /* use_pool */
+    false};
 
 static hpa_shard_t *
 create_test_data(const hpa_hooks_t *hooks, hpa_shard_opts_t *opts) {

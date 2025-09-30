@@ -17,6 +17,7 @@ extern bool             opt_abort_conf;
 extern bool             opt_trust_madvise;
 extern bool             opt_experimental_hpa_start_huge_if_thp_always;
 extern bool             opt_experimental_hpa_enforce_hugify;
+extern uint64_t         opt_hpa_pool_purge_delay_ms;
 extern bool             opt_confirm_conf;
 extern bool             opt_hpa;
 extern hpa_shard_opts_t opt_hpa_opts;
