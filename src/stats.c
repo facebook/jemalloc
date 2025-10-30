@@ -791,9 +791,29 @@ stats_arena_extents_print(emitter_t *emitter, unsigned i) {
 static void
 stats_arena_hpa_shard_sec_print(emitter_t *emitter, unsigned i) {
 	size_t sec_bytes;
+	size_t sec_hits;
+	size_t sec_misses;
+	size_t sec_dalloc_flush;
+	size_t sec_dalloc_noflush;
 	CTL_M2_GET("stats.arenas.0.hpa_sec_bytes", i, &sec_bytes, size_t);
 	emitter_kv(emitter, "sec_bytes", "Bytes in small extent cache",
 	    emitter_type_size, &sec_bytes);
+	CTL_M2_GET("stats.arenas.0.hpa_sec_hits", i, &sec_hits, size_t);
+	emitter_kv(emitter, "sec_hits", "Total hits in small extent cache",
+	    emitter_type_size, &sec_hits);
+	CTL_M2_GET("stats.arenas.0.hpa_sec_misses", i, &sec_misses, size_t);
+	emitter_kv(emitter, "sec_misses", "Total misses in small extent cache",
+	    emitter_type_size, &sec_misses);
+	CTL_M2_GET("stats.arenas.0.hpa_sec_dalloc_noflush", i,
+	    &sec_dalloc_noflush, size_t);
+	emitter_kv(emitter, "sec_dalloc_noflush",
+	    "Dalloc calls without flush in small extent cache",
+	    emitter_type_size, &sec_dalloc_noflush);
+	CTL_M2_GET("stats.arenas.0.hpa_sec_dalloc_flush", i, &sec_dalloc_flush,
+	    size_t);
+	emitter_kv(emitter, "sec_dalloc_flush",
+	    "Dalloc calls with flush in small extent cache", emitter_type_size,
+	    &sec_dalloc_flush);
 }
 
 static void
@@ -1115,7 +1135,7 @@ stats_arena_mutexes_print(
 	CTL_LEAF_PREPARE(stats_arenas_mib, 3, "mutexes");
 
 	for (mutex_prof_arena_ind_t i = 0; i < mutex_prof_num_arena_mutexes;
-	     i++) {
+	    i++) {
 		const char *name = arena_mutex_names[i];
 		emitter_json_object_kv_begin(emitter, name);
 		mutex_stats_read_arena(
@@ -1641,7 +1661,6 @@ stats_general_print(emitter_t *emitter) {
 	OPT_WRITE_SIZE_T("hpa_sec_nshards")
 	OPT_WRITE_SIZE_T("hpa_sec_max_alloc")
 	OPT_WRITE_SIZE_T("hpa_sec_max_bytes")
-	OPT_WRITE_SIZE_T("hpa_sec_bytes_after_flush")
 	OPT_WRITE_SIZE_T("hpa_sec_batch_fill_extra")
 	OPT_WRITE_BOOL("huge_arena_pac_thp")
 	OPT_WRITE_CHAR_P("metadata_thp")

@@ -11,6 +11,7 @@
 #include "jemalloc/internal/mutex.h"
 #include "jemalloc/internal/pai.h"
 #include "jemalloc/internal/psset.h"
+#include "jemalloc/internal/sec.h"
 
 typedef struct hpa_central_s hpa_central_t;
 struct hpa_central_s {
@@ -80,6 +81,7 @@ typedef struct hpa_shard_stats_s hpa_shard_stats_t;
 struct hpa_shard_stats_s {
 	psset_stats_t                psset_stats;
 	hpa_shard_nonderived_stats_t nonderived_stats;
+	sec_stats_t                  secstats;
 };
 
 typedef struct hpa_shard_s hpa_shard_t;
@@ -92,6 +94,10 @@ struct hpa_shard_s {
 
 	/* The central allocator we get our hugepages from. */
 	hpa_central_t *central;
+
+	/* Small extent cache */
+	sec_t sec;
+
 	/* Protects most of this shard's state. */
 	malloc_mutex_t mtx;
 	/*
@@ -167,9 +173,9 @@ bool hpa_hugepage_size_exceeds_limit(void);
 bool hpa_supported(void);
 bool hpa_central_init(
     hpa_central_t *central, base_t *base, const hpa_hooks_t *hooks);
-bool hpa_shard_init(hpa_shard_t *shard, hpa_central_t *central, emap_t *emap,
-    base_t *base, edata_cache_t *edata_cache, unsigned ind,
-    const hpa_shard_opts_t *opts);
+bool hpa_shard_init(tsdn_t *tsdn, hpa_shard_t *shard, hpa_central_t *central,
+    emap_t *emap, base_t *base, edata_cache_t *edata_cache, unsigned ind,
+    const hpa_shard_opts_t *opts, const sec_opts_t *sec_opts);
 
 void hpa_shard_stats_accum(hpa_shard_stats_t *dst, hpa_shard_stats_t *src);
 void hpa_shard_stats_merge(
@@ -182,6 +188,8 @@ void hpa_shard_stats_merge(
  */
 void hpa_shard_disable(tsdn_t *tsdn, hpa_shard_t *shard);
 void hpa_shard_destroy(tsdn_t *tsdn, hpa_shard_t *shard);
+/* Flush caches that shard may be using */
+void hpa_shard_flush(tsdn_t *tsdn, hpa_shard_t *shard);
 
 void hpa_shard_set_deferral_allowed(
     tsdn_t *tsdn, hpa_shard_t *shard, bool deferral_allowed);
@@ -189,8 +197,9 @@ void hpa_shard_do_deferred_work(tsdn_t *tsdn, hpa_shard_t *shard);
 
 /*
  * We share the fork ordering with the PA and arena prefork handling; that's why
- * these are 3 and 4 rather than 0 and 1.
+ * these are 2, 3 and 4 rather than 0 and 1.
  */
+void hpa_shard_prefork2(tsdn_t *tsdn, hpa_shard_t *shard);
 void hpa_shard_prefork3(tsdn_t *tsdn, hpa_shard_t *shard);
 void hpa_shard_prefork4(tsdn_t *tsdn, hpa_shard_t *shard);
 void hpa_shard_postfork_parent(tsdn_t *tsdn, hpa_shard_t *shard);

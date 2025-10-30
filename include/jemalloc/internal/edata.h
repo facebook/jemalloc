@@ -222,7 +222,7 @@ struct edata_s {
 		 * ssssssss [...] ssssssss ssssnnnn nnnnnnnn
 		 */
 		size_t e_size_esn;
-#define EDATA_SIZE_MASK ((size_t) ~(PAGE - 1))
+#define EDATA_SIZE_MASK ((size_t)~(PAGE - 1))
 #define EDATA_ESN_MASK ((size_t)PAGE - 1)
 		/* Base extent size, which may not be a multiple of PAGE. */
 		size_t e_bsize;

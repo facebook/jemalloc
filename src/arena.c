@@ -89,7 +89,7 @@ arena_stats_merge(tsdn_t *tsdn, arena_t *arena, unsigned *nthreads,
     const char **dss, ssize_t *dirty_decay_ms, ssize_t *muzzy_decay_ms,
     size_t *nactive, size_t *ndirty, size_t *nmuzzy, arena_stats_t *astats,
     bin_stats_data_t *bstats, arena_stats_large_t *lstats, pac_estats_t *estats,
-    hpa_shard_stats_t *hpastats, sec_stats_t *secstats) {
+    hpa_shard_stats_t *hpastats) {
 	cassert(config_stats);
 
 	arena_basic_stats_merge(tsdn, arena, nthreads, dss, dirty_decay_ms,
@@ -159,7 +159,7 @@ arena_stats_merge(tsdn_t *tsdn, arena_t *arena, unsigned *nthreads,
 	}
 
 	pa_shard_stats_merge(tsdn, &arena->pa_shard, &astats->pa_shard_stats,
-	    estats, hpastats, secstats, &astats->resident);
+	    estats, hpastats, &astats->resident);
 
 	LOCKEDINT_MTX_UNLOCK(tsdn, arena->stats.mtx);
 
@@ -529,7 +529,7 @@ arena_decay(tsdn_t *tsdn, arena_t *arena, bool is_background_thread, bool all) {
 		 * as possible", including flushing any caches (for situations
 		 * like thread death, or manual purge calls).
 		 */
-		sec_flush(tsdn, &arena->pa_shard.hpa_sec);
+		pa_shard_flush(tsdn, &arena->pa_shard);
 	}
 	if (arena_decay_dirty(tsdn, arena, is_background_thread, all)) {
 		return;
@@ -693,7 +693,7 @@ arena_bin_reset(tsd_t *tsd, arena_t *arena, bin_t *bin) {
 		malloc_mutex_lock(tsd_tsdn(tsd), &bin->lock);
 	}
 	for (slab = edata_list_active_first(&bin->slabs_full); slab != NULL;
-	     slab = edata_list_active_first(&bin->slabs_full)) {
+	    slab = edata_list_active_first(&bin->slabs_full)) {
 		arena_bin_slabs_full_remove(arena, bin, slab);
 		malloc_mutex_unlock(tsd_tsdn(tsd), &bin->lock);
 		arena_slab_dalloc(tsd_tsdn(tsd), arena, slab);
@@ -799,7 +799,7 @@ arena_reset(tsd_t *tsd, arena_t *arena) {
 	malloc_mutex_lock(tsd_tsdn(tsd), &arena->large_mtx);
 
 	for (edata_t *edata = edata_list_active_first(&arena->large);
-	     edata != NULL; edata = edata_list_active_first(&arena->large)) {
+	    edata != NULL; edata = edata_list_active_first(&arena->large)) {
 		void  *ptr = edata_base_get(edata);
 		size_t usize;
 
@@ -1890,7 +1890,8 @@ arena_init_huge(tsdn_t *tsdn, arena_t *a0) {
 		/* Make sure that b0 thp auto-switch won't happen concurrently here. */
 		malloc_mutex_lock(tsdn, &b0->mtx);
 		(&huge_arena_pac_thp)->thp_madvise = opt_huge_arena_pac_thp
-		    && metadata_thp_enabled() && (opt_thp == thp_mode_do_nothing)
+		    && metadata_thp_enabled()
+		    && (opt_thp == thp_mode_do_nothing)
 		    && (init_system_thp_mode == system_thp_mode_madvise);
 		(&huge_arena_pac_thp)->auto_thp_switched =
 		    b0->auto_thp_switched;

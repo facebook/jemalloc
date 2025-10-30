@@ -312,7 +312,6 @@ TEST_BEGIN(test_mallctl_opt) {
 	TEST_MALLCTL_OPT(size_t, hpa_sec_nshards, always);
 	TEST_MALLCTL_OPT(size_t, hpa_sec_max_alloc, always);
 	TEST_MALLCTL_OPT(size_t, hpa_sec_max_bytes, always);
-	TEST_MALLCTL_OPT(size_t, hpa_sec_bytes_after_flush, always);
 	TEST_MALLCTL_OPT(size_t, hpa_sec_batch_fill_extra, always);
 	TEST_MALLCTL_OPT(ssize_t, experimental_hpa_max_purge_nhp, always);
 	TEST_MALLCTL_OPT(size_t, hpa_purge_threshold, always);
@@ -616,8 +615,8 @@ TEST_BEGIN(test_arena_i_dirty_decay_ms) {
 	    0, "Unexpected mallctl() failure");
 
 	for (prev_dirty_decay_ms = dirty_decay_ms, dirty_decay_ms = -1;
-	     dirty_decay_ms < 20;
-	     prev_dirty_decay_ms = dirty_decay_ms, dirty_decay_ms++) {
+	    dirty_decay_ms < 20;
+	    prev_dirty_decay_ms = dirty_decay_ms, dirty_decay_ms++) {
 		ssize_t old_dirty_decay_ms;
 
 		expect_d_eq(mallctl("arena.0.dirty_decay_ms",
@@ -649,8 +648,8 @@ TEST_BEGIN(test_arena_i_muzzy_decay_ms) {
 	    0, "Unexpected mallctl() failure");
 
 	for (prev_muzzy_decay_ms = muzzy_decay_ms, muzzy_decay_ms = -1;
-	     muzzy_decay_ms < 20;
-	     prev_muzzy_decay_ms = muzzy_decay_ms, muzzy_decay_ms++) {
+	    muzzy_decay_ms < 20;
+	    prev_muzzy_decay_ms = muzzy_decay_ms, muzzy_decay_ms++) {
 		ssize_t old_muzzy_decay_ms;
 
 		expect_d_eq(mallctl("arena.0.muzzy_decay_ms",
@@ -869,8 +868,8 @@ TEST_BEGIN(test_arenas_dirty_decay_ms) {
 	    0, "Expected mallctl() failure");
 
 	for (prev_dirty_decay_ms = dirty_decay_ms, dirty_decay_ms = -1;
-	     dirty_decay_ms < 20;
-	     prev_dirty_decay_ms = dirty_decay_ms, dirty_decay_ms++) {
+	    dirty_decay_ms < 20;
+	    prev_dirty_decay_ms = dirty_decay_ms, dirty_decay_ms++) {
 		ssize_t old_dirty_decay_ms;
 
 		expect_d_eq(mallctl("arenas.dirty_decay_ms",
@@ -902,8 +901,8 @@ TEST_BEGIN(test_arenas_muzzy_decay_ms) {
 	    0, "Expected mallctl() failure");
 
 	for (prev_muzzy_decay_ms = muzzy_decay_ms, muzzy_decay_ms = -1;
-	     muzzy_decay_ms < 20;
-	     prev_muzzy_decay_ms = muzzy_decay_ms, muzzy_decay_ms++) {
+	    muzzy_decay_ms < 20;
+	    prev_muzzy_decay_ms = muzzy_decay_ms, muzzy_decay_ms++) {
 		ssize_t old_muzzy_decay_ms;
 
 		expect_d_eq(mallctl("arenas.muzzy_decay_ms",
