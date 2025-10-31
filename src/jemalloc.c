@@ -1474,7 +1474,7 @@ malloc_conf_init_helper(sc_data_t *sc_data, unsigned bin_shard_sizes[SC_NBINS],
 				    opt_experimental_infallible_new,
 				    "experimental_infallible_new")
 			}
-
+			CONF_HANDLE_BOOL(opt_ccache, "ccache");
 			CONF_HANDLE_BOOL(opt_experimental_tcache_gc,
 			    "experimental_tcache_gc")
 			CONF_HANDLE_BOOL(opt_tcache, "tcache")
@@ -2385,6 +2385,10 @@ malloc_init_hard(void) {
 	}
 
 	malloc_init_percpu();
+	if (opt_ccache) {
+		assert(have_rseq_support);
+		ccache_boot(tsd_tsdn(tsd), b0get());
+	}
 
 	if (malloc_init_hard_finish()) {
 		UNLOCK_RETURN(tsd_tsdn(tsd), true, true)

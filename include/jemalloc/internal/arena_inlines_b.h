@@ -16,6 +16,7 @@
 #include "jemalloc/internal/safety_check.h"
 #include "jemalloc/internal/sc.h"
 #include "jemalloc/internal/sz.h"
+#include "jemalloc/internal/ccache_externs.h"
 #include "jemalloc/internal/tcache_inlines.h"
 #include "jemalloc/internal/ticker.h"
 
@@ -196,19 +197,43 @@ JEMALLOC_ALWAYS_INLINE void *
 arena_malloc(tsdn_t *tsdn, arena_t *arena, size_t size, szind_t ind, bool zero,
     bool slab, tcache_t *tcache, bool slow_path) {
 	assert(!tsdn_null(tsdn) || tcache == NULL);
+	if (tsdn_null(tsdn)) {
+		return arena_malloc_hard(tsdn, arena, size, ind, zero, slab);
+	}
 
-	if (likely(tcache != NULL)) {
-		if (likely(slab)) {
-			assert(sz_can_use_slab(size));
-			return tcache_alloc_small(tsdn_tsd(tsdn), arena, tcache,
-			    size, ind, zero, slow_path);
-		} else if (likely(ind < tcache_nbins_get(tcache->tcache_slow)
+	tsd_t *tsd = tsdn_tsd(tsdn);
+	if (likely(slab)) {
+		assert(sz_can_use_slab(size));
+		if (likely(tcache != NULL)) {
+			return tcache_alloc_small(
+			    tsd, arena, tcache, size, ind, zero, slow_path);
+		} /* (tcache == NULL) case falls through. */
+	} else {
+		assert(ind >= SC_NBINS);
+		/* Prefer ccache for large-sized allocation if available. */
+		if (likely(opt_ccache)) {
+			assert(have_rseq_support);
+			void *ret = NULL;
+			if (likely(ind < SC_NBINS + CCACHE_NBINS_MAX
+			        && (ret = ccache_alloc(tsd, ind, zero))
+			            != NULL)) {
+				if (config_stats) {
+					ccache_tdata_t *tdata =
+					    tsd_ccache_tdatap_get(tsd);
+					tdata->ccache_tstats[ind - SC_NBINS]
+					    .nrequests++;
+				}
+				return ret;
+			} /* size > ccache_max or ret == NULL case falls through. */
+			assert(
+			    ind >= SC_NBINS + CCACHE_NBINS_MAX || ret == NULL);
+		} else if (likely(tcache != NULL
+		               && ind < tcache_nbins_get(tcache->tcache_slow)
 		               && !tcache_bin_disabled(ind, &tcache->bins[ind],
 		                   tcache->tcache_slow))) {
-			return tcache_alloc_large(tsdn_tsd(tsdn), arena, tcache,
-			    size, ind, zero, slow_path);
-		}
-		/* (size > tcache_max) case falls through. */
+			return tcache_alloc_large(
+			    tsd, arena, tcache, size, ind, zero, slow_path);
+		} /* (size > tcache_max) case falls through. */
 	}
 
 	return arena_malloc_hard(tsdn, arena, size, ind, zero, slab);
@@ -316,23 +341,27 @@ arena_dalloc_large(tsdn_t *tsdn, void *ptr, tcache_t *tcache, szind_t szind,
 	assert(!tsdn_null(tsdn) && tcache != NULL);
 	bool is_sample_promoted = config_prof && szind < SC_NBINS;
 	if (unlikely(is_sample_promoted)) {
-		arena_dalloc_promoted(tsdn, ptr, tcache, slow_path);
-	} else {
-		if (szind < tcache_nbins_get(tcache->tcache_slow)
-		    && !tcache_bin_disabled(
-		        szind, &tcache->bins[szind], tcache->tcache_slow)) {
-			tcache_dalloc_large(
-			    tsdn_tsd(tsdn), tcache, ptr, szind, slow_path);
-		} else {
-			edata_t *edata = emap_edata_lookup(
-			    tsdn, &arena_emap_global, ptr);
-			if (large_dalloc_safety_checks(edata, ptr, usize)) {
-				/* See the comment in isfree. */
-				return;
-			}
-			large_dalloc(tsdn, edata);
-		}
+		return arena_dalloc_promoted(tsdn, ptr, tcache, slow_path);
 	}
+	assert(szind >= SC_NBINS);
+	if (opt_ccache) {
+		assert(have_rseq_support);
+		if (szind < SC_NBINS + CCACHE_NBINS_MAX
+		    && !ccache_dalloc(tsdn_tsd(tsdn), ptr, szind)) {
+			return;
+		}
+	} else if (szind < tcache_nbins_get(tcache->tcache_slow)
+	    && !tcache_bin_disabled(
+	        szind, &tcache->bins[szind], tcache->tcache_slow)) {
+		return tcache_dalloc_large(
+		    tsdn_tsd(tsdn), tcache, ptr, szind, slow_path);
+	}
+	edata_t *edata = emap_edata_lookup(tsdn, &arena_emap_global, ptr);
+	if (large_dalloc_safety_checks(edata, ptr, usize)) {
+		/* See the comment in isfree. */
+		return;
+	}
+	large_dalloc(tsdn, edata);
 }
 
 /* Find the region index of a pointer. */

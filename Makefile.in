@@ -62,6 +62,7 @@ enable_static := @enable_static@
 enable_prof := @enable_prof@
 enable_zone_allocator := @enable_zone_allocator@
 enable_experimental_smallocx := @enable_experimental_smallocx@
+have_rseq := @have_rseq@
 MALLOC_CONF := @JEMALLOC_CPREFIX@MALLOC_CONF
 link_whole_archive := @link_whole_archive@
 DSO_LDFLAGS = @DSO_LDFLAGS@
@@ -162,6 +163,11 @@ C_SRCS := $(srcroot)src/jemalloc.c \
 	$(srcroot)src/witness.c
 ifeq ($(enable_zone_allocator), 1)
 C_SRCS += $(srcroot)src/zone.c
+endif
+ifeq ($(have_rseq), 1)
+C_SRCS += $(srcroot)src/ccache.c
+else
+C_SRCS += $(srcroot)src/ccache_stub.c
 endif
 ifeq ($(IMPORTLIB),$(SO))
 STATIC_LIBS := $(objroot)lib/$(LIBJEMALLOC).$(A)

@@ -283,4 +283,11 @@ static const bool have_memcntl =
 #endif
     ;
 
+static const bool have_rseq_support =
+#ifdef JEMALLOC_RSEQ_SUPPORTED
+    true
+#else
+    false
+#endif
+    ;
 #endif /* JEMALLOC_PREAMBLE_H */

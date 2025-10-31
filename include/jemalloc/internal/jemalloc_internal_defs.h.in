@@ -447,6 +447,11 @@
  */
 #undef JEMALLOC_BACKGROUND_THREAD
 
+/* Defined if rseq(2) is available and jemalloc supports the use of it. */
+#undef JEMALLOC_RSEQ_SUPPORTED
+#undef JEMALLOC_RSEQ_KERNEL
+#undef JEMALLOC_RSEQ_GLIBC
+
 /*
  * If defined, jemalloc symbols are not exported (doesn't work when
  * JEMALLOC_PREFIX is not defined).
