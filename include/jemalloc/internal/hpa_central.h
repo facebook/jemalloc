@@ -14,7 +14,7 @@ struct hpa_pool_s {
 	 * Pool of empty huge pages to be shared between shards that are
 	 * participating.
 	 *
-	 * Page is owned by the  pool if it lives in one of these two lists.
+	 * Page is owned by the pool if it lives in one of these two lists.
 	 * This means that it should not be part of any hpa_shard's psset at the
 	 * same time.
 	 */
@@ -68,15 +68,19 @@ bool hpa_central_init(
 hpdata_t *hpa_central_extract(tsdn_t *tsdn, hpa_central_t *central, size_t size,
     uint64_t age, bool hugify_eager, bool *oom);
 
-/* Donate empty pages to central */
-void hpa_central_ps_insert(tsdn_t *tsdn, hpa_central_t *central,
-    hpdata_empty_list_t *pages, const nstime_t *now);
+/* Donate empty page to central */
+void hpa_central_donate(
+    tsdn_t *tsdn, hpa_central_t *central, hpdata_t *ps, const nstime_t *now);
 /* Get empty page from central without growing it */
-hpdata_t *hpa_central_ps_pop(tsdn_t *tsdn, hpa_central_t *central);
+hpdata_t *hpa_central_borrow(tsdn_t *tsdn, hpa_central_t *central);
 
 /* Purge up to max_ps empty pages in the central */
 size_t hpa_central_purge(
     tsdn_t *tsdn, hpa_central_t *central, const nstime_t *now, size_t max_ps);
+
+/* Get time in nanoseconds until central pool needs deferred work */
+uint64_t hpa_central_time_until_deferred_work(
+    tsdn_t *tsdn, hpa_central_t *central);
 
 void hpa_central_prefork(tsdn_t *tsdn, hpa_central_t *central);
 void hpa_central_postfork_parent(tsdn_t *tsdn, hpa_central_t *central);

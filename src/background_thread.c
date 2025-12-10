@@ -87,7 +87,9 @@ pthread_create_fptr_init(void) {
 
 #ifndef JEMALLOC_BACKGROUND_THREAD
 #	define NOT_REACHED                                                    \
-		{ not_reached(); }
+		{                                                              \
+			not_reached();                                         \
+		}
 bool
 background_thread_create(tsd_t *tsd, unsigned arena_ind) NOT_REACHED
     bool background_threads_enable(tsd_t *tsd) NOT_REACHED
@@ -277,6 +279,22 @@ background_work_sleep_once(
 		    tsdn, &arena->pa_shard);
 		if (ns_arena_deferred < ns_until_deferred) {
 			ns_until_deferred = ns_arena_deferred;
+		}
+	}
+
+	/*
+	 * Handle central pool (shared across all arenas).
+	 * Multiple background threads may call this concurrently;
+	 * hpa_central functions handle synchronization internally.
+	 */
+	if (!slept_indefinitely) {
+		arena_central_do_deferred_work(tsdn);
+	}
+	if (ns_until_deferred > BACKGROUND_THREAD_MIN_INTERVAL_NS) {
+		uint64_t ns_central_deferred =
+		    arena_central_time_until_deferred_work(tsdn);
+		if (ns_central_deferred < ns_until_deferred) {
+			ns_until_deferred = ns_central_deferred;
 		}
 	}
 

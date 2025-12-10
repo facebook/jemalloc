@@ -227,7 +227,6 @@ arena_stats_global_central_mutex_read(
 	malloc_mutex_unlock(tsdn, &arena_pa_central_global.hpa.pool_mtx);
 }
 
-
 static void
 arena_background_thread_inactivity_check(
     tsdn_t *tsdn, arena_t *arena, bool is_background_thread) {
@@ -626,6 +625,27 @@ void
 arena_do_deferred_work(tsdn_t *tsdn, arena_t *arena) {
 	arena_decay(tsdn, arena, true, false);
 	pa_shard_do_deferred_work(tsdn, &arena->pa_shard);
+}
+
+/* Called from background threads to purge central pool. */
+void
+arena_central_do_deferred_work(tsdn_t *tsdn) {
+	if (arena_pa_central_global.hpa.base == NULL) {
+		return;
+	}
+	nstime_t now;
+	arena_pa_central_global.hpa.hooks.curtime(
+	    &now, /* first_reading */ true);
+	hpa_central_purge(tsdn, &arena_pa_central_global.hpa, &now, SIZE_MAX);
+}
+
+uint64_t
+arena_central_time_until_deferred_work(tsdn_t *tsdn) {
+	if (arena_pa_central_global.hpa.base == NULL) {
+		return UINT64_MAX;
+	}
+	return hpa_central_time_until_deferred_work(
+	    tsdn, &arena_pa_central_global.hpa);
 }
 
 void

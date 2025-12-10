@@ -46,7 +46,7 @@ void arena_stats_merge(tsdn_t *tsdn, arena_t *arena, unsigned *nthreads,
     const char **dss, ssize_t *dirty_decay_ms, ssize_t *muzzy_decay_ms,
     size_t *nactive, size_t *ndirty, size_t *nmuzzy, arena_stats_t *astats,
     bin_stats_data_t *bstats, arena_stats_large_t *lstats, pac_estats_t *estats,
-    hpa_shard_stats_t *hpastats, sec_stats_t *secstats);
+    hpa_shard_stats_t *hpastats);
 void arena_stats_global_central_read(tsdn_t *tsdn, hpa_central_stats_t *stats);
 void arena_stats_global_central_mutex_read(
     tsdn_t *tsdn, mutex_prof_data_t *mutex_prof_data);
@@ -67,6 +67,8 @@ void    arena_decay(
        tsdn_t *tsdn, arena_t *arena, bool is_background_thread, bool all);
 uint64_t       arena_time_until_deferred(tsdn_t *tsdn, arena_t *arena);
 void           arena_do_deferred_work(tsdn_t *tsdn, arena_t *arena);
+void           arena_central_do_deferred_work(tsdn_t *tsdn);
+uint64_t       arena_central_time_until_deferred_work(tsdn_t *tsdn);
 void           arena_reset(tsd_t *tsd, arena_t *arena);
 void           arena_destroy(tsd_t *tsd, arena_t *arena);
 cache_bin_sz_t arena_ptr_array_fill_small(tsdn_t *tsdn, arena_t *arena,

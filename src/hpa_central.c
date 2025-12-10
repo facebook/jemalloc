@@ -28,23 +28,13 @@ hpa_central_stats_read(
 	malloc_mutex_unlock(tsdn, &central->pool_mtx);
 }
 
-static inline void
-hpa_central_pool_concat_nonpurged(tsdn_t *tsdn, hpa_central_t *central,
-    hpdata_empty_list_t *pages, size_t new_dirty) {
-	malloc_mutex_lock(tsdn, &central->pool_mtx);
-	hpdata_empty_list_concat(&central->pool.nonpurged, pages);
-	central->stats.ndirty_pool += new_dirty;
-	malloc_mutex_unlock(tsdn, &central->pool_mtx);
-}
-
 static void
 hpa_central_get_nonpurged(tsdn_t *tsdn, hpa_central_t *central,
     const nstime_t *now, hpa_purge_batch_t *batch) {
 	malloc_mutex_lock(tsdn, &central->pool_mtx);
 	while (!hpa_batch_full(batch)
 	    && !hpdata_empty_list_empty(&central->pool.nonpurged)) {
-		hpdata_t *ps = hpdata_empty_list_first(
-		    &central->pool.nonpurged);
+		hpdata_t *ps = hpdata_empty_list_last(&central->pool.nonpurged);
 		assert(hpdata_empty(ps) && hpdata_purge_allowed_get(ps));
 
 		const nstime_t *allowed = hpdata_time_purge_allowed_get(ps);
@@ -56,7 +46,8 @@ hpa_central_get_nonpurged(tsdn_t *tsdn, hpa_central_t *central,
 		hpa_purge_item_t *hp_item = &batch->items[batch->item_cnt];
 		batch->item_cnt++;
 		hp_item->hp = ps;
-		hp_item->dehugify = hpdata_huge_get(hp_item->hp);
+		/* We only deal with empty pages in the pool */
+		hp_item->dehugify = false;
 		size_t nranges;
 		hpdata_alloc_allowed_set(hp_item->hp, false);
 		size_t ndirty = hpdata_purge_begin(
@@ -78,8 +69,11 @@ hpa_central_put_purged(
 
 	for (size_t i = 0; i < batch->item_cnt; ++i) {
 		hpa_purge_item_t *hp_item = &batch->items[i];
-		if (hp_item->dehugify) {
+		/* Page was empty, so we just change the flag after purging */
+		if (hpdata_huge_get(hp_item->hp)) {
 			hpdata_dehugify(hp_item->hp);
+			hpdata_purged_when_empty_and_huge_set(
+			    hp_item->hp, true);
 		}
 		hpdata_purge_end(hp_item->hp, &hp_item->state);
 		hpdata_alloc_allowed_set(hp_item->hp, true);
@@ -96,33 +90,50 @@ hpa_central_put_purged(
 }
 
 void
-hpa_central_ps_insert(tsdn_t *tsdn, hpa_central_t *central,
-    hpdata_empty_list_t *pages, const nstime_t *now) {
-	assert(!hpdata_empty_list_empty(pages));
-
+hpa_central_donate(
+    tsdn_t *tsdn, hpa_central_t *central, hpdata_t *ps, const nstime_t *now) {
 	assert(now != NULL);
 	nstime_t purge_time;
 	nstime_copy(&purge_time, now);
 	uint64_t purge_delay_ns = opt_hpa_pool_purge_delay_ms * MILLION;
 	nstime_iadd(&purge_time, purge_delay_ns);
-
-	hpdata_t *ps;
-	size_t    new_dirty = 0;
-	ql_foreach (ps, &pages->head, ql_link_empty) {
-		assert(hpdata_empty(ps));
-		assert(hpdata_ndirty_get(ps) > 0);
-		hpdata_time_purge_allowed_set(ps, &purge_time);
-		new_dirty += hpdata_ndirty_get(ps);
-	}
-	hpa_central_pool_concat_nonpurged(tsdn, central, pages, new_dirty);
+	assert(hpdata_empty(ps));
+	assert(hpdata_ndirty_get(ps) > 0);
+	/*
+	 * Central pool purge policy: We expect to receive pages with ndirty > 0
+	 * from shards. Regardless of the source shard's purge settings
+	 * (including dirty_mult=-1), donated pages are marked as purgeable and
+	 * will be purged after hpa_pool_purge_delay_ms milliseconds. This
+	 * allows the central pool to reclaim memory independently of individual
+	 * shard policies.
+	 */
+	hpdata_purge_allowed_set(ps, true);
+	hpdata_time_purge_allowed_set(ps, &purge_time);
+	size_t new_dirty = hpdata_ndirty_get(ps);
+	malloc_mutex_lock(tsdn, &central->pool_mtx);
+	central->stats.ndirty_pool += new_dirty;
+	/*
+	 * Insert at head (LIFO for insertion). This means newly donated pages
+	 * will be borrowed first (FIFO for borrowing at line 125), providing
+	 * better cache locality. Older pages accumulate at the tail and are
+	 * purged first (LIFO for purging at line 37).
+	 */
+	hpdata_empty_list_prepend(&central->pool.nonpurged, ps);
+	malloc_mutex_unlock(tsdn, &central->pool_mtx);
 }
 
 hpdata_t *
-hpa_central_ps_pop(tsdn_t *tsdn, hpa_central_t *central) {
+hpa_central_borrow(tsdn_t *tsdn, hpa_central_t *central) {
 	hpdata_t *ps = NULL;
 
 	malloc_mutex_lock(tsdn, &central->pool_mtx);
+	/*
+	 * Prefer non-purged pages over purged ones. Non-purged pages are cheaper
+	 * to use (no need to fault pages back in) and allow purged pages to
+	 * remain as a reserve for when the pool is under pressure.
+	 */
 	if (!hpdata_empty_list_empty(&central->pool.nonpurged)) {
+		/* Take from front (FIFO) - gets most recently donated pages. */
 		ps = hpdata_empty_list_first(&central->pool.nonpurged);
 		hpdata_empty_list_remove(&central->pool.nonpurged, ps);
 	}
@@ -282,6 +293,36 @@ hpa_central_purge(
 		hpa_central_put_purged(tsdn, central, &batch);
 	} while (hpa_batch_full(&batch));
 	return batch.npurged_hp_total;
+}
+
+uint64_t
+hpa_central_time_until_deferred_work(tsdn_t *tsdn, hpa_central_t *central) {
+	nstime_t purge_allowed;
+	nstime_init_zero(&purge_allowed);
+
+	malloc_mutex_lock(tsdn, &central->pool_mtx);
+	if (!hpdata_empty_list_empty(&central->pool.nonpurged)) {
+		/* Get the last element (oldest in terms of insertion order) */
+		hpdata_t *ps = hpdata_empty_list_last(&central->pool.nonpurged);
+		nstime_copy(&purge_allowed, hpdata_time_purge_allowed_get(ps));
+	}
+	malloc_mutex_unlock(tsdn, &central->pool_mtx);
+
+	if (nstime_equals_zero(&purge_allowed)) {
+		/* No pages to purge */
+		return BACKGROUND_THREAD_DEFERRED_MAX;
+	}
+
+	nstime_t now;
+	central->hooks.curtime(&now, /* first_reading */ true);
+
+	if (nstime_compare(&purge_allowed, &now) <= 0) {
+		/* Already ready for purging */
+		return BACKGROUND_THREAD_DEFERRED_MIN;
+	}
+
+	/* Return nanoseconds until purge is allowed */
+	return nstime_ns_between(&now, &purge_allowed);
 }
 
 /*

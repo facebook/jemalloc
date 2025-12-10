@@ -67,8 +67,11 @@ create_test_data(
 	err = emap_init(&test_data->emap, test_data->base, /* zeroed */ false);
 	assert_false(err, "");
 
-	err = hpa_shard_init(&test_data->shard, central, &test_data->emap,
-	    test_data->base, &test_data->shard_edata_cache, shard_ind, opts);
+	tsdn_t *tsdn = tsd_tsdn(tsd_fetch());
+	sec_opts_t sec_opts;
+	sec_opts.nshards = 0;
+	err = hpa_shard_init(tsdn, &test_data->shard, central, &test_data->emap,
+			     test_data->base, &test_data->shard_edata_cache, shard_ind, opts, &sec_opts);
 	assert_false(err, "");
 
 	return (hpa_shard_t *)test_data;
@@ -177,7 +180,7 @@ TEST_BEGIN(test_central_pool) {
 		expect_ptr_not_null(edatas[i], "Unexpected null edata");
 	}
 	/* Remember the page */
-	hpdata_t *ps = psset_pick_alloc(&shard1->psset, PAGE);
+	hpdata_t *ps = edata_ps_get(edatas[0]);
 	expect_true(hpdata_huge_get(ps), "Should be huge as we start as huge");
 
 	/* Deallocate all */
@@ -186,9 +189,8 @@ TEST_BEGIN(test_central_pool) {
 		    tsdn, &shard1->pai, edatas[i], &deferred_work_generated);
 	}
 	hpa_shard_do_deferred_work(tsdn, shard1);
-	expect_true(deferred_work_generated, "");
-	expect_zu_eq(
-	    0, ndefer_purge_calls, "Should donate, not purge delay=0ms");
+	expect_false(deferred_work_generated, "Page was donated on dalloc");
+	expect_zu_eq(0, ndefer_purge_calls, "Should donate, not purge");
 
 	/* Stats should not include the page */
 	expect_zu_eq(shard1->psset.stats.merged.nactive, 0, "");
@@ -200,25 +202,24 @@ TEST_BEGIN(test_central_pool) {
 	    false, false, &deferred_work_generated);
 	expect_ptr_not_null(edata2, "Unexpected null edata");
 	expect_zu_eq(shard2->psset.stats.merged.nactive, 1, "");
-	hpdata_t *ps2 = psset_pick_alloc(&shard2->psset, PAGE);
-	expect_ptr_eq(
-	    ps, ps2, "Expected to get the same page via central pool");
+	hpdata_t *ps2 = edata_ps_get(edata2);
+	expect_ptr_eq(ps, ps2, "Expected to get the same page via pool");
 	expect_true(hpdata_huge_get(ps2), "Should still be huge");
 
 	expect_zu_eq(shard2->psset.stats.merged.npageslabs, 1, "");
 	pai_dalloc(tsdn, &shard2->pai, edata2, &deferred_work_generated);
-	expect_true(deferred_work_generated, "");
+	expect_false(deferred_work_generated, "Page donated to the pool");
 	ndefer_purge_calls = 0;
 	npurge_size = 0;
 	hpa_shard_do_deferred_work(tsdn, shard1);
-	expect_zu_eq(0, ndefer_purge_calls, "No purge, no donate, delay==0ms");
+	expect_zu_eq(0, ndefer_purge_calls, "Empty shard");
 	hpa_shard_do_deferred_work(tsdn, shard2);
-	expect_zu_eq(0, ndefer_purge_calls, "No purge, yes donate, delay==0ms");
+	expect_zu_eq(0, ndefer_purge_calls, "Empty shard");
 
-	/* Move the time above hard coded limit of 10s */
+	/* Move the time above limit of 10s we passed in MALLOC_CONF */
 	nstime_iadd(&defer_curtime, UINT64_C(30) * 1000 * 1000 * 1000);
-	hpa_shard_do_deferred_work(tsdn, shard2);
-	expect_zu_eq(1, ndefer_purge_calls, "Purged, delay==0ms");
+	hpa_central_purge(tsdn, &central, &defer_curtime, SIZE_MAX);
+	expect_zu_eq(1, ndefer_purge_calls, "Purged, delay==10ms");
 	expect_zu_eq(HUGEPAGE, npurge_size, "Should purge full folio");
 	expect_zu_eq(shard1->psset.stats.merged.npageslabs, 0, "");
 	expect_zu_eq(shard2->psset.stats.merged.npageslabs, 0, "");
@@ -227,92 +228,10 @@ TEST_BEGIN(test_central_pool) {
 	    &deferred_work_generated);
 	expect_ptr_not_null(edata2, "Unexpected null edata");
 	expect_zu_eq(shard2->psset.stats.merged.nactive, 1, "");
-	ps2 = psset_pick_alloc(&shard2->psset, PAGE);
-	expect_ptr_eq(
-	    ps, ps2, "Expected to get the same page via central pool");
+	ps2 = edata_ps_get(edata2);
+	expect_ptr_eq(ps, ps2, "Expected to get the same page via pool");
 	expect_zu_eq(shard2->psset.stats.merged.npageslabs, 1, "");
 	pai_dalloc(tsdn, &shard2->pai, edata2, &deferred_work_generated);
-
-	npurge_size = 0;
-	ndefer_purge_calls = 0;
-	destroy_test_data(shard1);
-	destroy_test_data(shard2);
-	base_delete(TSDN_NULL, central_base);
-}
-TEST_END
-
-TEST_BEGIN(test_central_pool_with_delay) {
-	test_skip_if(!hpa_supported() || !config_stats);
-
-	hpa_hooks_t hooks;
-	hooks.map = &defer_test_map;
-	hooks.unmap = &defer_test_unmap;
-	hooks.purge = &defer_test_purge;
-	hooks.hugify = &defer_test_hugify;
-	hooks.dehugify = &defer_test_dehugify;
-	hooks.curtime = &defer_test_curtime;
-	hooks.ms_since = &defer_test_ms_since;
-	hooks.vectorized_purge = &defer_vectorized_purge;
-
-	hpa_shard_opts_t opts = test_hpa_shard_opts_default;
-	opts.deferral_allowed = true;
-	opts.purge_threshold = HUGEPAGE;
-	opts.min_purge_delay_ms = 1000;
-	opts.min_purge_interval_ms = 0;
-
-	hpa_central_t central;
-	base_t       *central_base = base_new(TSDN_NULL, /* ind */ 1234,
-	          &ehooks_default_extent_hooks, /* metadata_use_hooks */ true);
-	assert_ptr_not_null(central_base, "");
-	hpa_central_init(&central, central_base, &hooks);
-	ndefer_purge_calls = 0;
-	hpa_shard_t *shard1 = create_test_data(&central, &opts, SHARD_IND);
-	hpa_shard_t *shard2 = create_test_data(&central, &opts, SHARD_IND2);
-
-	bool deferred_work_generated = false;
-	nstime_init(&defer_curtime, 10 * 1000 * 1000);
-	tsdn_t *tsdn = tsd_tsdn(tsd_fetch());
-	enum { NALLOCS = HUGEPAGE_PAGES };
-	edata_t *edatas[NALLOCS];
-	for (int i = 0; i < NALLOCS / 2; i++) {
-		edatas[i] = pai_alloc(tsdn, &shard1->pai, PAGE, PAGE, false,
-		    false, false, &deferred_work_generated);
-		expect_ptr_not_null(edatas[i], "Unexpected null edata");
-	}
-	/* Remember the page */
-	hpdata_t *ps = psset_pick_alloc(&shard1->psset, PAGE);
-	expect_true(hpdata_huge_get(ps), "Should be huge as we start as huge");
-
-	/* Deallocate all */
-	for (int i = 0; i < NALLOCS / 2; i++) {
-		pai_dalloc(
-		    tsdn, &shard1->pai, edatas[i], &deferred_work_generated);
-	}
-	hpa_shard_do_deferred_work(tsdn, shard1);
-	expect_true(deferred_work_generated, "");
-	expect_zu_eq(0, ndefer_purge_calls, "No purge, no donation delay=0ms");
-
-	/* Stats should include the page */
-	expect_zu_eq(shard1->psset.stats.merged.nactive, 0, "");
-	expect_zu_eq(shard1->psset.stats.merged.npageslabs, 1, "");
-
-	/* One more second passed */
-	nstime_iadd(&defer_curtime, UINT64_C(1000) * 1000 * 1000);
-	hpa_shard_do_deferred_work(tsdn, shard1);
-	expect_zu_eq(0, ndefer_purge_calls, "No purge, donation");
-	/* Stats should not include the page */
-	expect_zu_eq(shard1->psset.stats.merged.nactive, 0, "");
-	expect_zu_eq(shard1->psset.stats.merged.npageslabs, 0, "");
-	/* Make allocation on second shard */
-	edata_t *edata2 = pai_alloc(tsdn, &shard2->pai, PAGE, PAGE, false,
-	    false, false, &deferred_work_generated);
-	expect_ptr_not_null(edata2, "Unexpected null edata");
-	expect_zu_eq(shard2->psset.stats.merged.nactive, 1, "");
-	hpdata_t *ps2 = psset_pick_alloc(&shard2->psset, PAGE);
-	expect_ptr_eq(
-	    ps, ps2, "Expected to get the same page via central pool");
-	expect_true(hpdata_huge_get(ps2), "Should still be huge");
-	expect_zu_eq(shard2->psset.stats.merged.npageslabs, 1, "");
 
 	npurge_size = 0;
 	ndefer_purge_calls = 0;
@@ -324,6 +243,5 @@ TEST_END
 
 int
 main(void) {
-	return test_no_reentrancy(
-	    test_central_pool, test_central_pool_with_delay);
+	return test_no_reentrancy(test_central_pool);
 }
