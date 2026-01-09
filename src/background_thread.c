@@ -547,8 +547,11 @@ background_thread_create_locked(tsd_t *tsd, unsigned arena_ind) {
 	if (!need_new_thread) {
 		return false;
 	}
-	if (arena_ind != 0) {
-		/* Threads are created asynchronously by Thread 0. */
+	if (thread_ind != 0) {
+		/*
+		 * Non-zero thread slots are created asynchronously by Thread 0.
+		 * Only thread 0 is created directly (by whoever needs it first).
+		 */
 		background_thread_info_t *t0 = &background_thread_info[0];
 		malloc_mutex_lock(tsd_tsdn(tsd), &t0->mtx);
 		assert(t0->state == background_thread_started);
