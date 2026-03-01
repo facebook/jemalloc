@@ -8,6 +8,7 @@
 #include "jemalloc/internal/arena_types.h"
 #include "jemalloc/internal/assert.h"
 #include "jemalloc/internal/bin_types.h"
+#include "jemalloc/internal/ccache_types.h"
 #include "jemalloc/internal/jemalloc_internal_externs.h"
 #include "jemalloc/internal/peak.h"
 #include "jemalloc/internal/prof_types.h"
@@ -65,6 +66,7 @@ typedef ql_elm(tsd_t) tsd_link_t;
 	O(tcache_enabled, bool, bool)                                          \
 	O(reentrancy_level, int8_t, int8_t)                                    \
 	O(min_init_state_nfetched, uint8_t, uint8_t)                           \
+	O(ccache_tdata, ccache_tdata_t, ccache_tdata_t)                        \
 	O(thread_allocated_last_event, uint64_t, uint64_t)                     \
 	O(thread_allocated_next_event, uint64_t, uint64_t)                     \
 	O(thread_deallocated_last_event, uint64_t, uint64_t)                   \
@@ -92,6 +94,7 @@ typedef ql_elm(tsd_t) tsd_link_t;
 #define TSD_DATA_SLOW_INITIALIZER                                              \
 	/* tcache_enabled */ TCACHE_ENABLED_ZERO_INITIALIZER,                  \
 	    /* reentrancy_level */ 0, /* min_init_state_nfetched */ 0,         \
+	    /* ccache_tdata */ CCACHE_TDATA_ZERO_INITIALIZER,                  \
 	    /* thread_allocated_last_event */ 0,                               \
 	    /* thread_allocated_next_event */ 0,                               \
 	    /* thread_deallocated_last_event */ 0,                             \

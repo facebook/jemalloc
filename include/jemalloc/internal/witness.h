@@ -34,6 +34,7 @@ enum witness_rank_e {
 	WITNESS_RANK_PROF_LOG,
 	WITNESS_RANK_PROF_GCTX,
 	WITNESS_RANK_PROF_RECENT_DUMP,
+	WITNESS_RANK_CCACHE,
 	WITNESS_RANK_BACKGROUND_THREAD,
 	/*
 	 * Used as an argument to witness_assert_depth_to_rank() in order to

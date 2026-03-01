@@ -33,6 +33,7 @@ tcache_enabled(void) {
 
 TEST_BEGIN(test_large_double_free_tcache) {
 	test_skip_if(!config_opt_safety_checks);
+	test_skip_if(opt_ccache);
 	/*
 	 * Skip debug builds, since too many assertions will be triggered with
 	 * double-free before hitting the one we are interested in.

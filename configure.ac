@@ -2838,6 +2838,43 @@ if test "x${have_pthread}" = "x1" -a "x${je_cv_os_unfair_lock}" != "xyes" -a \
 fi
 
 dnl ============================================================================
+dnl Support rseq on linux x86_64 if available.
+
+have_rseq="0"
+case "${host_cpu}" in x86_64)
+    case "${host}" in *-*-linux*)
+      dnl Check for kernel rseq
+      JE_COMPILABLE([kernel rseq], [
+      #include <linux/rseq.h>
+      #include <sys/syscall.h>
+      ], [
+        syscall(__NR_rseq, (void *)0, 0, 0, 0);
+      ], [je_cv_kernel_rseq])
+      if test "x${je_cv_kernel_rseq}" = "xyes" ; then
+        AC_DEFINE([JEMALLOC_RSEQ_KERNEL], [ ], [ ])
+        have_rseq="1"
+      fi
+      dnl Check for glibc rseq
+      JE_COMPILABLE([glibc rseq], [
+      #include <sys/rseq.h>
+      ], [
+        return (__rseq_offset && __rseq_size && __rseq_flags) ? 0 : 0;
+      ], [je_cv_glibc_rseq])
+      if test "x${je_cv_glibc_rseq}" = "xyes" ; then
+        AC_DEFINE([JEMALLOC_RSEQ_GLIBC], [ ], [ ])
+        have_rseq="1"
+      fi
+      ;;
+    esac
+  ;;
+esac
+
+if test "x${have_rseq}" = "x1" ; then
+    AC_DEFINE([JEMALLOC_RSEQ_SUPPORTED], [ ], [ ])
+fi
+AC_SUBST([have_rseq])
+
+dnl ============================================================================
 dnl Check for glibc malloc hooks
 
 if test "x$glibc" = "x1" ; then

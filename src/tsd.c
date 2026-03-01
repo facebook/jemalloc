@@ -396,6 +396,7 @@ _malloc_tsd_cleanup_register(bool (*f)(void)) {
 
 static void
 tsd_do_data_cleanup(tsd_t *tsd) {
+	ccache_tdata_cleanup(tsd);
 	prof_tdata_cleanup(tsd);
 	iarena_cleanup(tsd);
 	arena_cleanup(tsd);
@@ -514,7 +515,8 @@ _tls_callback(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 #		pragma section(".CRT$XLY", long, read)
 #	endif
 JEMALLOC_SECTION(".CRT$XLY")
-JEMALLOC_ATTR(used) BOOL(WINAPI *const tls_callback)(
+JEMALLOC_ATTR(used)
+BOOL(WINAPI *const tls_callback)(
     HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) = _tls_callback;
 #endif
 
