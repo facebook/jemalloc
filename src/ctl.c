@@ -115,7 +115,6 @@ CTL_PROTO(opt_hpa_dirty_mult)
 CTL_PROTO(opt_hpa_sec_nshards)
 CTL_PROTO(opt_hpa_sec_max_alloc)
 CTL_PROTO(opt_hpa_sec_max_bytes)
-CTL_PROTO(opt_hpa_sec_batch_fill_extra)
 CTL_PROTO(opt_huge_arena_pac_thp)
 CTL_PROTO(opt_metadata_thp)
 CTL_PROTO(opt_retain)
@@ -488,7 +487,6 @@ static const ctl_named_node_t opt_node[] = {{NAME("abort"), CTL(opt_abort)},
     {NAME("hpa_sec_nshards"), CTL(opt_hpa_sec_nshards)},
     {NAME("hpa_sec_max_alloc"), CTL(opt_hpa_sec_max_alloc)},
     {NAME("hpa_sec_max_bytes"), CTL(opt_hpa_sec_max_bytes)},
-    {NAME("hpa_sec_batch_fill_extra"), CTL(opt_hpa_sec_batch_fill_extra)},
     {NAME("huge_arena_pac_thp"), CTL(opt_huge_arena_pac_thp)},
     {NAME("metadata_thp"), CTL(opt_metadata_thp)},
     {NAME("retain"), CTL(opt_retain)}, {NAME("dss"), CTL(opt_dss)},
@@ -2178,8 +2176,6 @@ CTL_RO_NL_GEN(opt_hpa_slab_max_alloc, opt_hpa_opts.slab_max_alloc, size_t)
 CTL_RO_NL_GEN(opt_hpa_sec_nshards, opt_hpa_sec_opts.nshards, size_t)
 CTL_RO_NL_GEN(opt_hpa_sec_max_alloc, opt_hpa_sec_opts.max_alloc, size_t)
 CTL_RO_NL_GEN(opt_hpa_sec_max_bytes, opt_hpa_sec_opts.max_bytes, size_t)
-CTL_RO_NL_GEN(
-    opt_hpa_sec_batch_fill_extra, opt_hpa_sec_opts.batch_fill_extra, size_t)
 CTL_RO_NL_GEN(opt_huge_arena_pac_thp, opt_huge_arena_pac_thp, bool)
 CTL_RO_NL_GEN(
     opt_metadata_thp, metadata_thp_mode_names[opt_metadata_thp], const char *)

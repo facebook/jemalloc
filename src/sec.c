@@ -90,6 +90,33 @@ sec_bin_pick(sec_t *sec, uint8_t shard, pszind_t pszind) {
 	return &sec->bins[ind];
 }
 
+#define MAX_BYTES_DIV 8
+
+size_t
+sec_calc_nallocs_for_size(sec_t *sec, size_t size) {
+	size_t res = 1;
+
+	if (sec_size_supported(sec, size)) {
+		/*
+		 * This attempts to fill up up to 1/8 of the SEC.
+		 * If we go much over that, we might cause purging.
+		 * This is mainly an issue when max_bytes is small (256K)
+		 * and size is large. For larger max_bytes, we will
+		 * almost always end up with MAX_SEC_NALLOCS.
+		 */
+		res = sec->opts.max_bytes / size / MAX_BYTES_DIV;
+
+		res = (1 <= res) ? res : 1;
+		res = (res <= MAX_SEC_NALLOCS) ? res : MAX_SEC_NALLOCS;
+	}
+
+	/* post-conditions */
+	assert(1 <= res);
+	assert(res <= MAX_SEC_NALLOCS);
+
+	return res;
+}
+
 static edata_t *
 sec_bin_alloc_locked(tsdn_t *tsdn, sec_t *sec, sec_bin_t *bin, size_t size) {
 	malloc_mutex_assert_owner(tsdn, &bin->mtx);

@@ -395,6 +395,25 @@ void hpdata_init(hpdata_t *hpdata, void *addr, uint64_t age, bool is_huge);
 void *hpdata_reserve_alloc(hpdata_t *hpdata, size_t sz);
 void  hpdata_unreserve(hpdata_t *hpdata, void *addr, size_t sz);
 
+typedef struct hpdata_alloc_offset_s hpdata_alloc_offset_t;
+struct hpdata_alloc_offset_s {
+	size_t index;
+	size_t len;
+};
+
+/*
+ * Given an hpdata which can serve an allocation request of size sz,
+ * find between one and max_nallocs offsets that can satisfy such
+ * an allocation request and buffer them in offsets (without actually
+ * reserving any space or updating hpdata). Return the number
+ * of offsets discovered.
+ */
+size_t hpdata_find_alloc_offsets(hpdata_t *hpdata, size_t sz,
+    hpdata_alloc_offset_t *offsets, size_t max_nallocs);
+/* Reserve the allocation for the given offset. */
+void *hpdata_reserve_alloc_offset(
+    hpdata_t *hpdata, size_t sz, hpdata_alloc_offset_t *offset);
+
 /*
  * The hpdata_purge_prepare_t allows grabbing the metadata required to purge
  * subranges of a hugepage while holding a lock, drop the lock during the actual

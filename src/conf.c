@@ -254,9 +254,8 @@ JEMALLOC_DIAGNOSTIC_PUSH
 JEMALLOC_DIAGNOSTIC_IGNORE("-Wunused-function")
 
 JET_EXTERN bool
-conf_handle_unsigned(const char *v, size_t vlen,
-    uintmax_t min, uintmax_t max, bool check_min, bool check_max,
-    bool clip, uintmax_t *result) {
+conf_handle_unsigned(const char *v, size_t vlen, uintmax_t min, uintmax_t max,
+    bool check_min, bool check_max, bool clip, uintmax_t *result) {
 	char *end;
 	set_errno(0);
 	uintmax_t mv = (uintmax_t)malloc_strtoumax(v, &end, 0);
@@ -281,9 +280,8 @@ conf_handle_unsigned(const char *v, size_t vlen,
 }
 
 JET_EXTERN bool
-conf_handle_signed(const char *v, size_t vlen,
-    intmax_t min, intmax_t max, bool check_min, bool check_max,
-    bool clip, intmax_t *result) {
+conf_handle_signed(const char *v, size_t vlen, intmax_t min, intmax_t max,
+    bool check_min, bool check_max, bool clip, intmax_t *result) {
 	char *end;
 	set_errno(0);
 	intmax_t mv = (intmax_t)malloc_strtoumax(v, &end, 0);
@@ -473,11 +471,11 @@ malloc_conf_init_helper(sc_data_t *sc_data, unsigned bin_shard_sizes[SC_NBINS],
 			continue;
 		}
 
-		while (*opts != '\0'
-		    && !conf_next(&opts, &k, &klen, &v, &vlen)) {
+		while (
+		    *opts != '\0' && !conf_next(&opts, &k, &klen, &v, &vlen)) {
 #define CONF_ERROR(msg, k, klen, v, vlen)                                      \
 	if (!initial_call) {                                                   \
-		conf_error(msg, k, klen, v, vlen);                      \
+		conf_error(msg, k, klen, v, vlen);                             \
 		cur_opt_valid = false;                                         \
 	}
 #define CONF_CONTINUE                                                          \
@@ -977,9 +975,6 @@ malloc_conf_init_helper(sc_data_t *sc_data, unsigned bin_shard_sizes[SC_NBINS],
 			CONF_HANDLE_SIZE_T(opt_hpa_sec_opts.max_bytes,
 			    "hpa_sec_max_bytes", SEC_OPTS_MAX_BYTES_DEFAULT, 0,
 			    CONF_CHECK_MIN, CONF_DONT_CHECK_MAX, true);
-			CONF_HANDLE_SIZE_T(opt_hpa_sec_opts.batch_fill_extra,
-			    "hpa_sec_batch_fill_extra", 1, HUGEPAGE_PAGES,
-			    CONF_CHECK_MIN, CONF_CHECK_MAX, true);
 
 			if (CONF_MATCH("slab_sizes")) {
 				if (CONF_MATCH_VALUE("default")) {

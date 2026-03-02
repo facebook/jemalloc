@@ -651,37 +651,18 @@ hpa_shard_maybe_do_deferred_work(
 }
 
 static edata_t *
-hpa_try_alloc_one_no_grow(
-    tsdn_t *tsdn, hpa_shard_t *shard, size_t size, bool *oom) {
+hpa_try_alloc_one_no_grow(tsdn_t *tsdn, hpa_shard_t *shard, size_t size,
+    hpdata_t *ps, hpdata_alloc_offset_t *alloc_offset, bool *oom) {
+	assert(*oom == false);
 	malloc_mutex_assert_owner(tsdn, &shard->mtx);
 
-	bool     err;
 	edata_t *edata = edata_cache_fast_get(tsdn, &shard->ecf);
 	if (edata == NULL) {
 		*oom = true;
 		return NULL;
 	}
 
-	hpdata_t *ps = psset_pick_alloc(&shard->psset, size);
-	if (ps == NULL) {
-		edata_cache_fast_put(tsdn, &shard->ecf, edata);
-		return NULL;
-	}
-
-	psset_update_begin(&shard->psset, ps);
-
-	if (hpdata_empty(ps)) {
-		/*
-		 * If the pageslab used to be empty, treat it as though it's
-		 * brand new for fragmentation-avoidance purposes; what we're
-		 * trying to approximate is the age of the allocations *in* that
-		 * pageslab, and the allocations in the new pageslab are by
-		 * definition the youngest in this hpa shard.
-		 */
-		hpdata_age_set(ps, shard->age_counter++);
-	}
-
-	void *addr = hpdata_reserve_alloc(ps, size);
+	void *addr = hpdata_reserve_alloc_offset(ps, size, alloc_offset);
 	JE_USDT(hpa_alloc, 5, shard->ind, addr, size, hpdata_nactive_get(ps),
 	    hpdata_age_get(ps));
 	edata_init(edata, shard->ind, addr, size, /* slab */ false, SC_NSIZES,
@@ -693,12 +674,12 @@ hpa_try_alloc_one_no_grow(
 	/*
 	 * This could theoretically be moved outside of the critical section,
 	 * but that introduces the potential for a race.  Without the lock, the
-	 * (initially nonempty, since this is the reuse pathway) pageslab we
+   	 * (initially nonempty, since this is the reuse pathway) pageslab we
 	 * allocated out of could become otherwise empty while the lock is
 	 * dropped.  This would force us to deal with a pageslab eviction down
 	 * the error pathway, which is a pain.
 	 */
-	err = emap_register_boundary(
+	const bool err = emap_register_boundary(
 	    tsdn, shard->emap, edata, SC_NSIZES, /* slab */ false);
 	if (err) {
 		hpdata_unreserve(
@@ -715,29 +696,61 @@ hpa_try_alloc_one_no_grow(
 		 * principle that we didn't *really* affect shard state (we
 		 * tweaked the stats, but our tweaks weren't really accurate).
 		 */
-		psset_update_end(&shard->psset, ps);
 		edata_cache_fast_put(tsdn, &shard->ecf, edata);
 		*oom = true;
 		return NULL;
 	}
 
 	hpa_update_purge_hugify_eligibility(tsdn, shard, ps);
-	psset_update_end(&shard->psset, ps);
+
 	return edata;
 }
 
 static size_t
 hpa_try_alloc_batch_no_grow_locked(tsdn_t *tsdn, hpa_shard_t *shard,
-    size_t size, bool *oom, size_t nallocs, edata_list_active_t *results,
+    size_t size, bool *oom, edata_list_active_t *results,
     bool *deferred_work_generated) {
+	assert(size <= HUGEPAGE);
+	assert(size <= shard->opts.slab_max_alloc || size == sz_s2u(size));
+	assert(*oom == false);
 	malloc_mutex_assert_owner(tsdn, &shard->mtx);
+
+	hpdata_t *ps = psset_pick_alloc(&shard->psset, size);
+	if (ps == NULL) {
+		return 0;
+	}
+
+	hpdata_alloc_offset_t alloc_offsets[MAX_SEC_NALLOCS];
+	const size_t max_nallocs = sec_calc_nallocs_for_size(&shard->sec, size);
+	const size_t nallocs = hpdata_find_alloc_offsets(
+	    ps, size, alloc_offsets, max_nallocs);
+
+	psset_update_begin(&shard->psset, ps);
+
+	if (hpdata_empty(ps)) {
+		/*
+ 		 * If the pageslab used to be empty, treat it as though it's
+		 * brand new for fragmentation-avoidance purposes; what we're
+		 * trying to approximate is the age of the allocations *in* that
+		 * pageslab, and the allocations in the new pageslab are by
+		 * definition the youngest in this hpa shard.
+		 */
+		hpdata_age_set(ps, shard->age_counter++);
+	}
+
+	psset_update_end(&shard->psset, ps);
+
 	size_t nsuccess = 0;
-	for (; nsuccess < nallocs; nsuccess++) {
+	for (; nsuccess < nallocs; nsuccess += 1) {
+		psset_update_begin(&shard->psset, ps);
 		edata_t *edata = hpa_try_alloc_one_no_grow(
-		    tsdn, shard, size, oom);
+		    tsdn, shard, size, ps, &alloc_offsets[nsuccess], oom);
+		psset_update_end(&shard->psset, ps);
+
 		if (edata == NULL) {
 			break;
 		}
+
 		edata_list_active_append(results, edata);
 	}
 
@@ -748,27 +761,22 @@ hpa_try_alloc_batch_no_grow_locked(tsdn_t *tsdn, hpa_shard_t *shard,
 
 static size_t
 hpa_try_alloc_batch_no_grow(tsdn_t *tsdn, hpa_shard_t *shard, size_t size,
-    bool *oom, size_t nallocs, edata_list_active_t *results,
-    bool *deferred_work_generated) {
+    bool *oom, edata_list_active_t *results, bool *deferred_work_generated) {
 	malloc_mutex_lock(tsdn, &shard->mtx);
-	size_t nsuccess = hpa_try_alloc_batch_no_grow_locked(
-	    tsdn, shard, size, oom, nallocs, results, deferred_work_generated);
+	const size_t nsuccess = hpa_try_alloc_batch_no_grow_locked(
+	    tsdn, shard, size, oom, results, deferred_work_generated);
 	malloc_mutex_unlock(tsdn, &shard->mtx);
 	return nsuccess;
 }
 
 static size_t
 hpa_alloc_batch_psset(tsdn_t *tsdn, hpa_shard_t *shard, size_t size,
-    size_t nallocs, edata_list_active_t *results,
-    bool *deferred_work_generated) {
-	assert(size <= HUGEPAGE);
-	assert(size <= shard->opts.slab_max_alloc || size == sz_s2u(size));
+    edata_list_active_t *results, bool *deferred_work_generated) {
 	bool oom = false;
 
 	size_t nsuccess = hpa_try_alloc_batch_no_grow(
-	    tsdn, shard, size, &oom, nallocs, results, deferred_work_generated);
-
-	if (nsuccess == nallocs || oom) {
+	    tsdn, shard, size, &oom, results, deferred_work_generated);
+	if (0 < nsuccess || oom) {
 		return nsuccess;
 	}
 
@@ -777,13 +785,14 @@ hpa_alloc_batch_psset(tsdn_t *tsdn, hpa_shard_t *shard, size_t size,
 	 * try to grow.
 	 */
 	malloc_mutex_lock(tsdn, &shard->grow_mtx);
+
 	/*
 	 * Check for grow races; maybe some earlier thread expanded the psset
 	 * in between when we dropped the main mutex and grabbed the grow mutex.
 	 */
-	nsuccess += hpa_try_alloc_batch_no_grow(tsdn, shard, size, &oom,
-	    nallocs - nsuccess, results, deferred_work_generated);
-	if (nsuccess == nallocs || oom) {
+	nsuccess = hpa_try_alloc_batch_no_grow(
+	    tsdn, shard, size, &oom, results, deferred_work_generated);
+	if (0 < nsuccess || oom) {
 		malloc_mutex_unlock(tsdn, &shard->grow_mtx);
 		return nsuccess;
 	}
@@ -797,7 +806,7 @@ hpa_alloc_batch_psset(tsdn_t *tsdn, hpa_shard_t *shard, size_t size,
 	    shard->age_counter++, hpa_is_hugify_eager(shard), &oom);
 	if (ps == NULL) {
 		malloc_mutex_unlock(tsdn, &shard->grow_mtx);
-		return nsuccess;
+		return 0;
 	}
 
 	/*
@@ -807,14 +816,10 @@ hpa_alloc_batch_psset(tsdn_t *tsdn, hpa_shard_t *shard, size_t size,
 	 */
 	malloc_mutex_lock(tsdn, &shard->mtx);
 	psset_insert(&shard->psset, ps);
-	nsuccess += hpa_try_alloc_batch_no_grow_locked(tsdn, shard, size, &oom,
-	    nallocs - nsuccess, results, deferred_work_generated);
+	nsuccess = hpa_try_alloc_batch_no_grow_locked(
+	    tsdn, shard, size, &oom, results, deferred_work_generated);
 	malloc_mutex_unlock(tsdn, &shard->mtx);
 
-	/*
-	 * Drop grow_mtx before doing deferred work; other threads blocked on it
-	 * should be allowed to proceed while we're working.
-	 */
 	malloc_mutex_unlock(tsdn, &shard->grow_mtx);
 
 	return nsuccess;
@@ -886,13 +891,10 @@ hpa_alloc(tsdn_t *tsdn, pai_t *self, size_t size, size_t alignment, bool zero,
 	if (edata != NULL) {
 		return edata;
 	}
-	size_t              nallocs = sec_size_supported(&shard->sec, size)
-	                 ? shard->sec.opts.batch_fill_extra + 1
-	                 : 1;
 	edata_list_active_t results;
 	edata_list_active_init(&results);
 	size_t nsuccess = hpa_alloc_batch_psset(
-	    tsdn, shard, size, nallocs, &results, deferred_work_generated);
+	    tsdn, shard, size, &results, deferred_work_generated);
 	hpa_assert_results(tsdn, shard, &results);
 	edata = edata_list_active_first(&results);
 

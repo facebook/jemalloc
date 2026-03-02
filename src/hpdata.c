@@ -171,6 +171,108 @@ hpdata_unreserve(hpdata_t *hpdata, void *addr, size_t sz) {
 }
 
 size_t
+hpdata_find_alloc_offsets(hpdata_t *hpdata, size_t sz,
+    hpdata_alloc_offset_t *offsets, size_t max_nallocs) {
+	hpdata_assert_consistent(hpdata);
+	assert((sz & PAGE_MASK) == 0);
+	const size_t npages = sz >> LG_PAGE;
+	/* We should be able to find at least one allocation */
+	assert(npages <= hpdata_longest_free_range_get(hpdata));
+
+	bool   found = false;
+	size_t nallocs = 0;
+	size_t start = 0;
+	/*
+	 * These are dead stores, but the compiler will issue warnings on them
+	 * since it can't tell statically that found is always true below.
+	 */
+	size_t begin = 0;
+	size_t len = 0;
+
+	while (true) {
+		found = found
+		    || fb_urange_iter(hpdata->active_pages, HUGEPAGE_PAGES,
+		        start, &begin, &len);
+		if (!found) {
+			/* we should have found at least one */
+			assert(0 < nallocs);
+			break;
+		}
+
+		if (npages <= len) {
+			offsets->len = len;
+			offsets->index = begin;
+			offsets += 1;
+			nallocs += 1;
+
+			if (nallocs == max_nallocs) {
+				break;
+			}
+
+			begin += npages;
+			len -= npages;
+		} else {
+			found = false;
+			start = begin + len;
+			assert(start <= HUGEPAGE_PAGES);
+			if (start == HUGEPAGE_PAGES) {
+				break;
+			}
+		}
+	}
+
+	/* post-conditions */
+	assert(1 <= nallocs);
+	assert(nallocs <= max_nallocs);
+
+	return nallocs;
+}
+
+void *
+hpdata_reserve_alloc_offset(
+    hpdata_t *hpdata, size_t sz, hpdata_alloc_offset_t *offset) {
+	hpdata_assert_consistent(hpdata);
+
+	/*
+	 * This is a metadata change; the hpdata should therefore either not be
+	 * in the psset, or should have explicitly marked itself as being
+	 * mid-update.
+	 */
+	assert(!hpdata->h_in_psset || hpdata->h_updating);
+	assert(hpdata->h_alloc_allowed);
+	assert((sz & PAGE_MASK) == 0);
+	const size_t npages = sz >> LG_PAGE;
+	const size_t index = offset->index;
+
+	fb_set_range(hpdata->active_pages, HUGEPAGE_PAGES, index, npages);
+	hpdata->h_nactive += npages;
+
+	/*
+	 * We might be about to dirty some memory for the first time; update our
+	 * count if so.
+	 */
+	size_t new_dirty = fb_ucount(
+	    hpdata->touched_pages, HUGEPAGE_PAGES, index, npages);
+	fb_set_range(hpdata->touched_pages, HUGEPAGE_PAGES, index, npages);
+	hpdata->h_ntouched += new_dirty;
+
+	/*
+	 * If we allocated out of a range that was the longest in the hpdata, it
+	 * might be the only one of that size and we'll have to adjust the
+	 * metadata.
+	 */
+	assert(offset->len <= hpdata_longest_free_range_get(hpdata));
+	if (offset->len == hpdata_longest_free_range_get(hpdata)) {
+		const size_t longest_unchosen_range = fb_urange_longest(
+		    hpdata->active_pages, HUGEPAGE_PAGES);
+		hpdata_longest_free_range_set(hpdata, longest_unchosen_range);
+	}
+
+	hpdata_assert_consistent(hpdata);
+	return (void *)((byte_t *)hpdata_addr_get(hpdata) + (index << LG_PAGE));
+}
+
+size_t
 hpdata_purge_begin(
     hpdata_t *hpdata, hpdata_purge_state_t *purge_state, size_t *nranges) {
 	hpdata_assert_consistent(hpdata);
