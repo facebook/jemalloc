@@ -5,6 +5,7 @@
 #include "jemalloc/internal/arena_stats.h"
 #include "jemalloc/internal/background_thread_structs.h"
 #include "jemalloc/internal/bin_stats.h"
+#include "jemalloc/internal/hpa_central.h"
 #include "jemalloc/internal/jemalloc_internal_types.h"
 #include "jemalloc/internal/malloc_io.h"
 #include "jemalloc/internal/mutex_prof.h"
@@ -65,6 +66,7 @@ typedef struct ctl_stats_s {
 	size_t retained;
 
 	background_thread_stats_t background_thread;
+	hpa_central_stats_t       hpa_central;
 	mutex_prof_data_t mutex_prof_data[mutex_prof_num_global_mutexes];
 } ctl_stats_t;
 

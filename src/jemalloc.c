@@ -1677,6 +1677,10 @@ malloc_conf_init_helper(sc_data_t *sc_data, unsigned bin_shard_sizes[SC_NBINS],
 				}
 				CONF_CONTINUE;
 			}
+			CONF_HANDLE_BOOL(opt_hpa_opts.use_pool, "hpa_use_pool");
+			CONF_HANDLE_UINT64_T(opt_hpa_pool_purge_delay_ms,
+			    "hpa_pool_purge_delay_ms", 0, UINT64_MAX,
+			    CONF_DONT_CHECK_MIN, CONF_DONT_CHECK_MAX, false);
 
 			if (CONF_MATCH("hpa_dirty_mult")) {
 				if (CONF_MATCH_VALUE("-1")) {
@@ -4511,6 +4515,7 @@ _malloc_prefork(void)
 			}
 		}
 	}
+	arena_global_prefork(tsd_tsdn(tsd), opt_hpa);
 	prof_prefork1(tsd_tsdn(tsd));
 	stats_prefork(tsd_tsdn(tsd));
 	tsd_prefork(tsd);
@@ -4548,6 +4553,7 @@ _malloc_postfork(void)
 			arena_postfork_parent(tsd_tsdn(tsd), arena);
 		}
 	}
+	arena_global_postfork_parent(tsd_tsdn(tsd), opt_hpa);
 	prof_postfork_parent(tsd_tsdn(tsd));
 	if (have_background_thread) {
 		background_thread_postfork_parent(tsd_tsdn(tsd));
@@ -4578,6 +4584,7 @@ jemalloc_postfork_child(void) {
 			arena_postfork_child(tsd_tsdn(tsd), arena);
 		}
 	}
+	arena_global_postfork_child(tsd_tsdn(tsd), opt_hpa);
 	prof_postfork_child(tsd_tsdn(tsd));
 	if (have_background_thread) {
 		background_thread_postfork_child(tsd_tsdn(tsd));

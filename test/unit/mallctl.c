@@ -318,6 +318,8 @@ TEST_BEGIN(test_mallctl_opt) {
 	TEST_MALLCTL_OPT(size_t, hpa_purge_threshold, always);
 	TEST_MALLCTL_OPT(uint64_t, hpa_min_purge_delay_ms, always);
 	TEST_MALLCTL_OPT(const char *, hpa_hugify_style, always);
+	TEST_MALLCTL_OPT(bool, hpa_use_pool, always);
+	TEST_MALLCTL_OPT(uint64_t, hpa_pool_purge_delay_ms, always);
 	TEST_MALLCTL_OPT(unsigned, narenas, always);
 	TEST_MALLCTL_OPT(const char *, percpu_arena, always);
 	TEST_MALLCTL_OPT(size_t, oversize_threshold, always);
@@ -1075,6 +1077,8 @@ TEST_BEGIN(test_stats_arenas_hpa_shard_counters) {
 	TEST_STATS_ARENAS_HPA_SHARD_COUNTERS(uint64_t, npurges);
 	TEST_STATS_ARENAS_HPA_SHARD_COUNTERS(uint64_t, nhugifies);
 	TEST_STATS_ARENAS_HPA_SHARD_COUNTERS(uint64_t, ndehugifies);
+	TEST_STATS_ARENAS_HPA_SHARD_COUNTERS(uint64_t, ndonated_ps);
+	TEST_STATS_ARENAS_HPA_SHARD_COUNTERS(uint64_t, nborrowed_ps);
 
 #undef TEST_STATS_ARENAS_HPA_SHARD_COUNTERS
 }

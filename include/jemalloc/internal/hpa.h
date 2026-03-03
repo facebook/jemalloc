@@ -51,6 +51,20 @@ struct hpa_shard_nonderived_stats_s {
 	 * Guarded by mtx.
 	 */
 	uint64_t ndehugifies;
+
+	/*
+	 * The number of times we donated pageslab to central pool
+	 *
+	 * Guarded by mtx.
+	 */
+	uint64_t ndonated_ps;
+
+	/*
+	 * The number of times we borrowed pageslab from a central pool
+	 *
+	 * Guarded by mtx.
+	 */
+	uint64_t nborrowed_ps;
 };
 
 /* Completely derived; only used by CTL. */

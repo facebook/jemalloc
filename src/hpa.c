@@ -109,6 +109,8 @@ hpa_shard_init(tsdn_t *tsdn, hpa_shard_t *shard, hpa_central_t *central,
 	shard->stats.nhugifies = 0;
 	shard->stats.nhugify_failures = 0;
 	shard->stats.ndehugifies = 0;
+	shard->stats.ndonated_ps = 0;
+	shard->stats.nborrowed_ps = 0;
 
 	/*
 	 * Fill these in last, so that if an hpa_shard gets used despite
@@ -145,6 +147,8 @@ hpa_shard_nonderived_stats_accum(
 	dst->nhugifies += src->nhugifies;
 	dst->nhugify_failures += src->nhugify_failures;
 	dst->ndehugifies += src->ndehugifies;
+	dst->ndonated_ps += src->ndonated_ps;
+	dst->nborrowed_ps += src->nborrowed_ps;
 }
 
 void
@@ -286,6 +290,18 @@ hpa_assume_huge(tsdn_t *tsdn, hpa_shard_t *shard, hpdata_t *ps) {
 }
 
 static void
+hpa_update_purgable_time(hpa_shard_t *shard, hpdata_t *ps) {
+	if (shard->opts.min_purge_delay_ms == 0) {
+		return;
+	}
+	nstime_t now;
+	uint64_t delayns = shard->opts.min_purge_delay_ms * 1000 * 1000;
+	shard->central->hooks.curtime(&now, /* first_reading */ true);
+	nstime_iadd(&now, delayns);
+	hpdata_time_purge_allowed_set(ps, &now);
+}
+
+static void
 hpa_update_purge_hugify_eligibility(
     tsdn_t *tsdn, hpa_shard_t *shard, hpdata_t *ps) {
 	malloc_mutex_assert_owner(tsdn, &shard->mtx);
@@ -328,13 +344,8 @@ hpa_update_purge_hugify_eligibility(
 		hpdata_allow_hugify(ps, now);
 	}
 	bool purgable = hpa_good_purge_candidate(shard, ps);
-	if (purgable && !hpdata_purge_allowed_get(ps)
-	    && (shard->opts.min_purge_delay_ms > 0)) {
-		nstime_t now;
-		uint64_t delayns = shard->opts.min_purge_delay_ms * 1000 * 1000;
-		shard->central->hooks.curtime(&now, /* first_reading */ true);
-		nstime_iadd(&now, delayns);
-		hpdata_time_purge_allowed_set(ps, &now);
+	if (purgable && !hpdata_purge_allowed_get(ps)) {
+		hpa_update_purgable_time(shard, ps);
 	}
 	hpdata_purge_allowed_set(ps, purgable);
 
@@ -635,6 +646,17 @@ hpa_shard_maybe_do_deferred_work(
 			max_purges = max_purge_nhp;
 		}
 
+		if (shard->opts.use_pool && !shard->opts.deferral_allowed) {
+			size_t         max_pool_ops = (forced ? (size_t)-1 : 8);
+			hpa_central_t *central = shard->central;
+			nstime_t       now;
+			nstime_copy(&now, &shard->last_time_work_attempted);
+			/* we do not need to hold shard lock when purging the central */
+			malloc_mutex_unlock(tsdn, &shard->mtx);
+			hpa_central_purge(tsdn, central, &now, max_pool_ops);
+			malloc_mutex_lock(tsdn, &shard->mtx);
+		}
+
 		malloc_mutex_assert_owner(tsdn, &shard->mtx);
 		nops += hpa_purge(tsdn, shard, max_purges);
 		malloc_mutex_assert_owner(tsdn, &shard->mtx);
@@ -650,6 +672,52 @@ hpa_shard_maybe_do_deferred_work(
 	}
 }
 
+static void
+hpa_borrow_page_from_pool(tsdn_t *tsdn, hpa_shard_t *shard, hpdata_t *ps) {
+	malloc_mutex_assert_owner(tsdn, &shard->mtx);
+	hpdata_assert_consistent(ps);
+	assert(hpdata_empty(ps));
+	assert(!hpdata_updating_get(ps));
+	assert(!hpdata_changing_state_get(ps));
+	assert(hpdata_alloc_allowed_get(ps));
+
+	/* Page will be purgeable per this shard's rules. */
+	bool purgable = hpa_good_purge_candidate(shard, ps);
+	hpdata_purge_allowed_set(ps, purgable);
+	if (purgable) {
+		hpa_update_purgable_time(shard, ps);
+	}
+	/* Page is empty ensure we do not add to hugify list */
+	assert(!hpdata_hugify_allowed_get(ps));
+	shard->stats.nborrowed_ps++;
+	psset_insert(&shard->psset, ps);
+	hpdata_assert_consistent(ps);
+}
+
+static void
+hpa_donate_ps_to_pool(tsdn_t *tsdn, hpa_shard_t *shard, hpdata_t *ps) {
+	malloc_mutex_assert_owner(tsdn, &shard->mtx);
+
+	nstime_t now;
+	shard->central->hooks.curtime(&now, /* first_reading */ true);
+
+	hpdata_assert_consistent(ps);
+	assert(hpdata_empty(ps));
+	assert(!hpdata_updating_get(ps));
+	assert(!hpdata_changing_state_get(ps));
+	assert(hpdata_alloc_allowed_get(ps));
+	assert(hpdata_ndirty_get(ps) > 0);
+	assert(!hpdata_hugify_allowed_get(ps));
+
+	psset_remove(&shard->psset, ps);
+	shard->stats.ndonated_ps++;
+	hpdata_assert_consistent(ps);
+
+	malloc_mutex_unlock(tsdn, &shard->mtx);
+	hpa_central_donate(tsdn, shard->central, ps, &now);
+	malloc_mutex_lock(tsdn, &shard->mtx);
+}
+
 static edata_t *
 hpa_try_alloc_one_no_grow(
     tsdn_t *tsdn, hpa_shard_t *shard, size_t size, bool *oom) {
@@ -663,6 +731,12 @@ hpa_try_alloc_one_no_grow(
 	}
 
 	hpdata_t *ps = psset_pick_alloc(&shard->psset, size);
+	if (ps == NULL && shard->opts.use_pool) {
+		ps = hpa_central_borrow(tsdn, shard->central);
+		if (ps != NULL) {
+			hpa_borrow_page_from_pool(tsdn, shard, ps);
+		}
+	}
 	if (ps == NULL) {
 		edata_cache_fast_put(tsdn, &shard->ecf, edata);
 		return NULL;
@@ -979,6 +1053,10 @@ hpa_dalloc_locked(tsdn_t *tsdn, hpa_shard_t *shard, edata_t *edata) {
 	    hpdata_nactive_get(ps), hpdata_age_get(ps));
 	hpa_update_purge_hugify_eligibility(tsdn, shard, ps);
 	psset_update_end(&shard->psset, ps);
+	if (hpdata_empty(ps) && shard->opts.use_pool
+	    && !hpdata_changing_state_get(ps)) {
+		hpa_donate_ps_to_pool(tsdn, shard, ps);
+	}
 }
 
 static void

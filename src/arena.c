@@ -213,6 +213,20 @@ arena_stats_merge(tsdn_t *tsdn, arena_t *arena, unsigned *nthreads,
 	}
 }
 
+void
+arena_stats_global_central_read(tsdn_t *tsdn, hpa_central_stats_t *stats) {
+	hpa_central_stats_read(tsdn, &arena_pa_central_global.hpa, stats);
+}
+
+void
+arena_stats_global_central_mutex_read(
+    tsdn_t *tsdn, mutex_prof_data_t *mutex_prof_data) {
+	malloc_mutex_lock(tsdn, &arena_pa_central_global.hpa.pool_mtx);
+	malloc_mutex_prof_read(
+	    tsdn, mutex_prof_data, &arena_pa_central_global.hpa.pool_mtx);
+	malloc_mutex_unlock(tsdn, &arena_pa_central_global.hpa.pool_mtx);
+}
+
 static void
 arena_background_thread_inactivity_check(
     tsdn_t *tsdn, arena_t *arena, bool is_background_thread) {
@@ -611,6 +625,27 @@ void
 arena_do_deferred_work(tsdn_t *tsdn, arena_t *arena) {
 	arena_decay(tsdn, arena, true, false);
 	pa_shard_do_deferred_work(tsdn, &arena->pa_shard);
+}
+
+/* Called from background threads to purge central pool. */
+void
+arena_central_do_deferred_work(tsdn_t *tsdn) {
+	if (arena_pa_central_global.hpa.base == NULL) {
+		return;
+	}
+	nstime_t now;
+	arena_pa_central_global.hpa.hooks.curtime(
+	    &now, /* first_reading */ true);
+	hpa_central_purge(tsdn, &arena_pa_central_global.hpa, &now, SIZE_MAX);
+}
+
+uint64_t
+arena_central_time_until_deferred_work(tsdn_t *tsdn) {
+	if (arena_pa_central_global.hpa.base == NULL) {
+		return UINT64_MAX;
+	}
+	return hpa_central_time_until_deferred_work(
+	    tsdn, &arena_pa_central_global.hpa);
 }
 
 void
@@ -2322,6 +2357,13 @@ arena_prefork8(tsdn_t *tsdn, arena_t *arena) {
 }
 
 void
+arena_global_prefork(tsdn_t *tsdn, bool use_hpa) {
+	if (use_hpa) {
+		hpa_central_prefork(tsdn, &arena_pa_central_global.hpa);
+	}
+}
+
+void
 arena_postfork_parent(tsdn_t *tsdn, arena_t *arena) {
 	for (unsigned i = 0; i < nbins_total; i++) {
 		JEMALLOC_SUPPRESS_WARN_ON_USAGE(
@@ -2333,6 +2375,13 @@ arena_postfork_parent(tsdn_t *tsdn, arena_t *arena) {
 	pa_shard_postfork_parent(tsdn, &arena->pa_shard);
 	if (config_stats) {
 		malloc_mutex_postfork_parent(tsdn, &arena->tcache_ql_mtx);
+	}
+}
+
+void
+arena_global_postfork_parent(tsdn_t *tsdn, bool use_hpa) {
+	if (use_hpa) {
+		hpa_central_postfork_parent(tsdn, &arena_pa_central_global.hpa);
 	}
 }
 
@@ -2372,5 +2421,12 @@ arena_postfork_child(tsdn_t *tsdn, arena_t *arena) {
 	pa_shard_postfork_child(tsdn, &arena->pa_shard);
 	if (config_stats) {
 		malloc_mutex_postfork_child(tsdn, &arena->tcache_ql_mtx);
+	}
+}
+
+void
+arena_global_postfork_child(tsdn_t *tsdn, bool use_hpa) {
+	if (use_hpa) {
+		hpa_central_postfork_child(tsdn, &arena_pa_central_global.hpa);
 	}
 }

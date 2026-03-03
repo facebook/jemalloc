@@ -152,6 +152,12 @@ struct hpa_shard_opts_s {
 	 * hpa_hugify_style_t for options).
 	 */
 	hpa_hugify_style_t hugify_style;
+
+	/*
+	 * If use_pool is true this shard will donate empty pages to the pool
+	 * and borrow from the pool before using central allocator.
+	 */
+	bool use_pool;
 };
 
 /* clang-format off */
@@ -183,7 +189,9 @@ struct hpa_shard_opts_s {
 	/* min_purge_delay_ms */             				\
 	0,  								\
 	/* hugify_style */                				\
-	hpa_hugify_style_lazy						\
+	hpa_hugify_style_lazy,  					\
+	/* use_pool */  						\
+	false	        						\
 }
 /* clang-format on */
 
