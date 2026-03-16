@@ -644,7 +644,8 @@ hpa_shard_maybe_do_deferred_work(
 	 * Try to hugify at least once, even if we out of operations to make at
 	 * least some progress on hugification even at worst case.
 	 */
-	while (hpa_try_hugify(tsdn, shard) && nops < max_ops) {
+	while (init_system_thp_mode == thp_mode_default &&
+	       hpa_try_hugify(tsdn, shard) && nops < max_ops) {
 		malloc_mutex_assert_owner(tsdn, &shard->mtx);
 		nops++;
 	}
